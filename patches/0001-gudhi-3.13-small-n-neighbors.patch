@@ -1,0 +1,113 @@
+diff --git a/src/Bottleneck_distance/include/gudhi/Neighbors_finder.h b/src/Bottleneck_distance/include/gudhi/Neighbors_finder.h
+index 1d56f0b46..6d4c405e1 100644
+--- a/src/Bottleneck_distance/include/gudhi/Neighbors_finder.h
++++ b/src/Bottleneck_distance/include/gudhi/Neighbors_finder.h
+@@ -27,6 +27,10 @@ namespace Gudhi {
+ 
+ namespace persistence_diagram {
+ 
++#ifndef GUDHI_BOTTLENECK_LINEAR_SCAN_MAX_SIZE
++#define GUDHI_BOTTLENECK_LINEAR_SCAN_MAX_SIZE 256
++#endif
++
+ /** \internal \brief Variant of CGAL::Fuzzy_iso_box to ensure that the box ic closed. It isn't clear how necessary that is.
+  */
+ struct Square_query {
+@@ -79,9 +83,12 @@ class Neighbors_finder {
+   std::vector<int> pull_all_near(int u_point_index);
+ 
+  private:
++  static constexpr int linear_scan_max_graph_size = GUDHI_BOTTLENECK_LINEAR_SCAN_MAX_SIZE;
+   const Persistence_graph& g;
+   const double r;
++  const bool use_linear_scan;
+   Kd_tree kd_t;
++  std::vector<Internal_point> linear_points;
+   std::unordered_set<int> projections_f;
+ };
+ 
+@@ -112,11 +119,16 @@ class Layered_neighbors_finder {
+ };
+ 
+ inline Neighbors_finder::Neighbors_finder(const Persistence_graph& g, double r) :
+-    g(g), r(r), kd_t(), projections_f() { }
++    g(g), r(r), use_linear_scan(g.size() <= linear_scan_max_graph_size), kd_t(), linear_points(), projections_f() {
++  if (use_linear_scan)
++    linear_points.reserve(g.size());
++}
+ 
+ inline void Neighbors_finder::add(int v_point_index) {
+   if (g.on_the_v_diagonal(v_point_index))
+     projections_f.emplace(v_point_index);
++  else if (use_linear_scan)
++    linear_points.emplace_back(g.get_v_point(v_point_index));
+   else
+     kd_t.insert(g.get_v_point(v_point_index));
+ }
+@@ -135,13 +147,26 @@ inline int Neighbors_finder::pull_near(int u_point_index) {
+   } else {
+     // Is the query point near to a V point in the plane ?
+     Internal_point u_point = g.get_u_point(u_point_index);
+-    auto neighbor = kd_t.search_any_point(Square_query{u_point, r});
+-    if (!neighbor)
++    if (use_linear_scan) {
++      for (std::size_t index = 0; index < linear_points.size(); ++index) {
++        const Internal_point& candidate = linear_points[index];
++        if (std::abs(u_point.x() - candidate.x()) <= r && std::abs(u_point.y() - candidate.y()) <= r) {
++          tmp = candidate.point_index;
++          linear_points[index] = linear_points.back();
++          linear_points.pop_back();
++          return tmp;
++        }
++      }
+       return null_point_index();
+-    tmp = neighbor->point_index;
+-    auto point = g.get_v_point(tmp);
+-    int idx = point.point_index;
+-    kd_t.remove(point, [idx](Internal_point const&p){return p.point_index == idx;});
++    } else {
++      auto neighbor = kd_t.search_any_point(Square_query{u_point, r});
++      if (!neighbor)
++        return null_point_index();
++      tmp = neighbor->point_index;
++      auto point = g.get_v_point(tmp);
++      int idx = point.point_index;
++      kd_t.remove(point, [idx](Internal_point const&p){return p.point_index == idx;});
++    }
+   }
+   return tmp;
+ }
+diff --git a/src/Bottleneck_distance/test/bottleneck_unit_test.cpp b/src/Bottleneck_distance/test/bottleneck_unit_test.cpp
+index e801f48b0..158477276 100644
+--- a/src/Bottleneck_distance/test/bottleneck_unit_test.cpp
++++ b/src/Bottleneck_distance/test/bottleneck_unit_test.cpp
+@@ -96,6 +96,29 @@ BOOST_AUTO_TEST_CASE(neighbors_finder) {
+   BOOST_CHECK(v_point_index_2 == -1);
+ }
+ 
++BOOST_AUTO_TEST_CASE(neighbors_finder_small_linear_scan) {
++  std::vector<std::pair<double, double>> first = {{0., 0.2}, {0.3, 0.5}, {0.8, 1.0}};
++  std::vector<std::pair<double, double>> second = {{0.01, 0.21}, {0.31, 0.51}, {0.79, 0.99}};
++  Persistence_graph graph(first, second, 0.);
++  BOOST_REQUIRE(graph.size() <= 256);
++  constexpr double radius = 0.02;
++  for (int u_point_index = 0; u_point_index < graph.size(); ++u_point_index) {
++    Neighbors_finder finder(graph, radius);
++    for (int v_point_index = 0; v_point_index < graph.size(); ++v_point_index)
++      finder.add(v_point_index);
++
++    std::vector<int> actual = finder.pull_all_near(u_point_index);
++    std::vector<int> expected;
++    for (int v_point_index = 0; v_point_index < graph.size(); ++v_point_index) {
++      if (graph.distance(u_point_index, v_point_index) <= radius)
++        expected.emplace_back(v_point_index);
++    }
++    std::sort(actual.begin(), actual.end());
++    std::sort(expected.begin(), expected.end());
++    BOOST_CHECK_EQUAL_COLLECTIONS(actual.begin(), actual.end(), expected.begin(), expected.end());
++  }
++}
++
+ BOOST_AUTO_TEST_CASE(layered_neighbors_finder) {
+   Persistence_graph g(v1, v2, 0.);
+   Layered_neighbors_finder lnf(g, 1.);

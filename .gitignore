@@ -1,0 +1,21 @@
+# Local build products
+/build/
+/out/
+/artifacts/
+/benchmarks/results/
+/*.obj
+
+# Python environments and caches
+/.venv/
+/.pytest_cache/
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+*.whl
+
+# IDE and OS metadata
+/.vs/
+/.vscode/
+/.idea/
+.DS_Store
+Thumbs.db
