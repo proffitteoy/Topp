@@ -28,7 +28,11 @@ using bottleneck::WassersteinWarmStart;
 struct Options {
   std::size_t repetitions = 10;
   std::size_t rounds = 5;
+  std::size_t min_size = 8;
   std::size_t max_size = 512;
+  std::string pattern;
+  std::string metric;
+  std::vector<std::string> experiments;
 };
 
 struct NamedConfig {
@@ -87,6 +91,17 @@ std::pair<bottleneck::Diagram, bottleneck::Diagram> random_pair(
     std::shuffle(second.begin(), second.end(), generator);
     return {std::move(first), std::move(second)};
   }
+  if (pattern == "duplicate_light") {
+    auto first = random_diagram(generator, rows, -4.0, 4.0, 0.01, 3.0);
+    auto second = random_diagram(generator, columns, -4.0, 4.0, 0.01, 3.0);
+    if (first.size() > 1) {
+      first.back() = first.front();
+    }
+    if (second.size() > 1) {
+      second.back() = second.front();
+    }
+    return {std::move(first), std::move(second)};
+  }
   if (pattern == "adversarial_dense") {
     return {random_diagram(generator, rows, -0.01, 0.01, 1.99, 2.01),
             random_diagram(generator, columns, -0.01, 0.01, 1.99, 2.01)};
@@ -110,20 +125,49 @@ std::pair<bottleneck::Diagram, bottleneck::Diagram> random_pair(
           random_diagram(generator, columns, -4.0, 4.0, 0.01, 3.0)};
 }
 
+void append_experiments(std::vector<std::string>& experiments,
+                        std::string_view value) {
+  std::size_t begin = 0;
+  while (begin <= value.size()) {
+    const std::size_t end = value.find(',', begin);
+    const std::string_view name = value.substr(begin, end - begin);
+    if (!name.empty()) {
+      experiments.emplace_back(name);
+    }
+    if (end == std::string_view::npos) {
+      break;
+    }
+    begin = end + 1;
+  }
+}
+
 Options parse_options(int argc, char** argv) {
   Options options;
   for (int index = 1; index + 1 < argc; index += 2) {
     const std::string_view name(argv[index]);
-    const std::size_t value = static_cast<std::size_t>(std::stoull(argv[index + 1]));
     if (name == "--repetitions") {
-      options.repetitions = value;
+      options.repetitions = static_cast<std::size_t>(std::stoull(argv[index + 1]));
     } else if (name == "--rounds") {
-      options.rounds = value;
+      options.rounds = static_cast<std::size_t>(std::stoull(argv[index + 1]));
+    } else if (name == "--min-size") {
+      options.min_size = static_cast<std::size_t>(std::stoull(argv[index + 1]));
     } else if (name == "--max-size") {
-      options.max_size = value;
+      options.max_size = static_cast<std::size_t>(std::stoull(argv[index + 1]));
+    } else if (name == "--pattern") {
+      options.pattern = argv[index + 1];
+    } else if (name == "--metric") {
+      options.metric = argv[index + 1];
+    } else if (name == "--experiment" || name == "--experiments") {
+      append_experiments(options.experiments, argv[index + 1]);
     }
   }
   return options;
+}
+
+bool selected_experiment(const Options& options, std::string_view name) {
+  return options.experiments.empty() ||
+         std::find(options.experiments.begin(), options.experiments.end(), name) !=
+             options.experiments.end();
 }
 
 bool near(double first, double second) {
@@ -132,7 +176,7 @@ bool near(double first, double second) {
 }
 
 std::vector<NamedConfig> experiment_configs(WassersteinMetric metric) {
-  return {
+  std::vector<NamedConfig> configs{
       {"dense_hungarian",
        {metric, WassersteinCandidateStrategy::dense_scalar,
         WassersteinGraphStrategy::dense_matrix,
@@ -143,6 +187,11 @@ std::vector<NamedConfig> experiment_configs(WassersteinMetric metric) {
         WassersteinGraphStrategy::dense_matrix,
         WassersteinMatcherStrategy::dense_sap,
         WassersteinComponentStrategy::none, WassersteinWarmStart::none}},
+      {"row_reduced_dense_sap",
+       {metric, WassersteinCandidateStrategy::dense_scalar,
+        WassersteinGraphStrategy::dense_matrix,
+        WassersteinMatcherStrategy::dense_sap_row_reduction,
+        WassersteinComponentStrategy::none, WassersteinWarmStart::none}},
       {"blocked_dense",
        {metric, WassersteinCandidateStrategy::dense_blocked,
         WassersteinGraphStrategy::dense_matrix,
@@ -150,6 +199,11 @@ std::vector<NamedConfig> experiment_configs(WassersteinMetric metric) {
         WassersteinComponentStrategy::none, WassersteinWarmStart::none}},
       {"avx2_dense",
        {metric, WassersteinCandidateStrategy::dense_avx2,
+        WassersteinGraphStrategy::dense_matrix,
+        WassersteinMatcherStrategy::dense_sap,
+        WassersteinComponentStrategy::none, WassersteinWarmStart::none}},
+      {"parallel_dense",
+       {metric, WassersteinCandidateStrategy::dense_parallel,
         WassersteinGraphStrategy::dense_matrix,
         WassersteinMatcherStrategy::dense_sap,
         WassersteinComponentStrategy::none, WassersteinWarmStart::none}},
@@ -166,6 +220,56 @@ std::vector<NamedConfig> experiment_configs(WassersteinMetric metric) {
        {metric, WassersteinCandidateStrategy::sweep_binary,
         WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
         WassersteinComponentStrategy::none, WassersteinWarmStart::none}},
+      {"fixed4_sparse",
+       {metric, WassersteinCandidateStrategy::sweep_binary,
+        WassersteinGraphStrategy::fixed_degree_4,
+        WassersteinMatcherStrategy::sparse_sap,
+        WassersteinComponentStrategy::none, WassersteinWarmStart::none}},
+      {"fixed8_sparse",
+       {metric, WassersteinCandidateStrategy::sweep_binary,
+        WassersteinGraphStrategy::fixed_degree_8,
+        WassersteinMatcherStrategy::sparse_sap,
+        WassersteinComponentStrategy::none, WassersteinWarmStart::none}},
+      {"fixed16_sparse",
+       {metric, WassersteinCandidateStrategy::sweep_binary,
+        WassersteinGraphStrategy::fixed_degree_16,
+        WassersteinMatcherStrategy::sparse_sap,
+        WassersteinComponentStrategy::none, WassersteinWarmStart::none}},
+      {"fixed32_sparse",
+       {metric, WassersteinCandidateStrategy::sweep_binary,
+        WassersteinGraphStrategy::fixed_degree_32,
+        WassersteinMatcherStrategy::sparse_sap,
+        WassersteinComponentStrategy::none, WassersteinWarmStart::none}},
+      {"bitmask_lazy_sparse",
+       {metric, WassersteinCandidateStrategy::sweep_binary,
+        WassersteinGraphStrategy::bitmask_lazy,
+        WassersteinMatcherStrategy::sparse_sap,
+        WassersteinComponentStrategy::none, WassersteinWarmStart::none}},
+      {"bitmask_lazy_tiny",
+       {metric, WassersteinCandidateStrategy::sweep_binary,
+        WassersteinGraphStrategy::bitmask_lazy,
+        WassersteinMatcherStrategy::sparse_sap,
+        WassersteinComponentStrategy::tiny_sparse, WassersteinWarmStart::none}},
+      {"block16_sparse",
+       {metric, WassersteinCandidateStrategy::sweep_binary,
+        WassersteinGraphStrategy::block_sparse_16,
+        WassersteinMatcherStrategy::sparse_sap,
+        WassersteinComponentStrategy::none, WassersteinWarmStart::none}},
+      {"block32_sparse",
+       {metric, WassersteinCandidateStrategy::sweep_binary,
+        WassersteinGraphStrategy::block_sparse_32,
+        WassersteinMatcherStrategy::sparse_sap,
+        WassersteinComponentStrategy::none, WassersteinWarmStart::none}},
+      {"block16_tiny",
+       {metric, WassersteinCandidateStrategy::sweep_binary,
+        WassersteinGraphStrategy::block_sparse_16,
+        WassersteinMatcherStrategy::sparse_sap,
+        WassersteinComponentStrategy::tiny_sparse, WassersteinWarmStart::none}},
+      {"block32_tiny",
+       {metric, WassersteinCandidateStrategy::sweep_binary,
+        WassersteinGraphStrategy::block_sparse_32,
+        WassersteinMatcherStrategy::sparse_sap,
+        WassersteinComponentStrategy::tiny_sparse, WassersteinWarmStart::none}},
       {"two_pointer_rows_sparse",
        {metric, WassersteinCandidateStrategy::sweep_two_pointer,
         WassersteinGraphStrategy::row_vectors,
@@ -188,12 +292,88 @@ std::vector<NamedConfig> experiment_configs(WassersteinMetric metric) {
         WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
         WassersteinComponentStrategy::tiny_sparse,
         WassersteinWarmStart::global_descending}},
+      {"priced_topk2",
+       {metric, WassersteinCandidateStrategy::topk_pricing_full_scan,
+        WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+        WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+        bottleneck::WassersteinDuplicateStrategy::none, 2}},
+      {"priced_topk4",
+       {metric, WassersteinCandidateStrategy::topk_pricing_full_scan,
+        WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+        WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+        bottleneck::WassersteinDuplicateStrategy::none, 4}},
+      {"priced_topk8",
+       {metric, WassersteinCandidateStrategy::topk_pricing_full_scan,
+        WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+        WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+        bottleneck::WassersteinDuplicateStrategy::none, 8}},
+      {"priced_topk16",
+       {metric, WassersteinCandidateStrategy::topk_pricing_full_scan,
+        WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+        WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+        bottleneck::WassersteinDuplicateStrategy::none, 16}},
+      {"priced_topk32",
+       {metric, WassersteinCandidateStrategy::topk_pricing_full_scan,
+        WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+        WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+        bottleneck::WassersteinDuplicateStrategy::none, 32}},
+      {"priced_sweep_topk2",
+       {metric, WassersteinCandidateStrategy::topk_pricing_sweep,
+        WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+        WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+        bottleneck::WassersteinDuplicateStrategy::none, 2}},
+      {"priced_sweep_topk4",
+       {metric, WassersteinCandidateStrategy::topk_pricing_sweep,
+        WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+        WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+        bottleneck::WassersteinDuplicateStrategy::none, 4}},
+      {"priced_sweep_topk8",
+       {metric, WassersteinCandidateStrategy::topk_pricing_sweep,
+        WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+        WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+        bottleneck::WassersteinDuplicateStrategy::none, 8}},
+      {"priced_sweep_topk16",
+       {metric, WassersteinCandidateStrategy::topk_pricing_sweep,
+        WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+        WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+        bottleneck::WassersteinDuplicateStrategy::none, 16}},
+      {"priced_sweep_topk32",
+       {metric, WassersteinCandidateStrategy::topk_pricing_sweep,
+        WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+        WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+        bottleneck::WassersteinDuplicateStrategy::none, 32}},
+      {"adaptive_no_duplicates",
+       {metric, WassersteinCandidateStrategy::adaptive,
+        WassersteinGraphStrategy::adaptive, WassersteinMatcherStrategy::adaptive,
+        WassersteinComponentStrategy::adaptive,
+        WassersteinWarmStart::global_descending,
+        bottleneck::WassersteinDuplicateStrategy::none}},
+      {"duplicate_exact",
+       {metric, WassersteinCandidateStrategy::adaptive,
+        WassersteinGraphStrategy::adaptive, WassersteinMatcherStrategy::adaptive,
+        WassersteinComponentStrategy::adaptive,
+        WassersteinWarmStart::global_descending,
+        bottleneck::WassersteinDuplicateStrategy::exact}},
+      {"duplicate_adaptive",
+       {metric, WassersteinCandidateStrategy::adaptive,
+        WassersteinGraphStrategy::adaptive, WassersteinMatcherStrategy::adaptive,
+        WassersteinComponentStrategy::adaptive,
+        WassersteinWarmStart::global_descending,
+        bottleneck::WassersteinDuplicateStrategy::adaptive}},
       {"adaptive",
        {metric, WassersteinCandidateStrategy::adaptive,
         WassersteinGraphStrategy::adaptive, WassersteinMatcherStrategy::adaptive,
         WassersteinComponentStrategy::adaptive,
         WassersteinWarmStart::global_descending}},
   };
+  for (NamedConfig& named : configs) {
+    if (named.name != "duplicate_exact" && named.name != "duplicate_adaptive" &&
+        named.name != "adaptive") {
+      named.config.duplicates =
+          bottleneck::WassersteinDuplicateStrategy::none;
+    }
+  }
+  return configs;
 }
 
 double percentile(std::vector<double> values, double quantile) {
@@ -206,15 +386,38 @@ double percentile(std::vector<double> values, double quantile) {
 bool should_run(const NamedConfig& named, std::size_t rows, std::size_t columns,
                 std::string_view pattern) {
   const std::size_t maximum = (std::max)(rows, columns);
+  if (named.config.candidates ==
+          WassersteinCandidateStrategy::topk_pricing_full_scan ||
+      named.config.candidates == WassersteinCandidateStrategy::topk_pricing_sweep) {
+    return true;
+  }
   const bool explicitly_dense =
       named.config.matcher == WassersteinMatcherStrategy::dense_hungarian ||
       named.config.matcher == WassersteinMatcherStrategy::dense_sap ||
+      named.config.matcher ==
+          WassersteinMatcherStrategy::dense_sap_row_reduction ||
       named.config.components == WassersteinComponentStrategy::dense;
+  if (named.config.graph == WassersteinGraphStrategy::bitmask_lazy &&
+      maximum > 256) {
+    return false;
+  }
+  if ((named.config.graph == WassersteinGraphStrategy::block_sparse_16 ||
+       named.config.graph == WassersteinGraphStrategy::block_sparse_32) &&
+      maximum > 1024) {
+    return false;
+  }
   if (explicitly_dense && maximum > 512) {
     return false;
   }
   if (maximum > 1024 && pattern != "separated" && pattern != "adversarial_sparse") {
-    return false;
+    return named.name == "adaptive";
+  }
+  if (maximum > 1024) {
+    return named.name == "fixed4_sparse" || named.name == "fixed8_sparse" ||
+           named.name == "fixed16_sparse" || named.name == "fixed32_sparse" ||
+           named.name == "component_sparse" ||
+           named.name == "tiny_component_sparse" ||
+           named.name == "greedy_warm_sparse" || named.name == "adaptive";
   }
   return true;
 }
@@ -223,25 +426,39 @@ bool should_run(const NamedConfig& named, std::size_t rows, std::size_t columns,
 
 int main(int argc, char** argv) {
   const Options options = parse_options(argc, argv);
+  const bool pricing_requested =
+      std::any_of(options.experiments.begin(), options.experiments.end(),
+                  [](const std::string& name) {
+                    return name.starts_with("priced_topk") ||
+                           name.starts_with("priced_sweep_topk");
+                  });
   std::mt19937_64 generator(0xD5A0A11ULL);
   const std::vector<std::size_t> all_sizes{8,   16,   32,   64,   128, 256,
                                            512, 1024, 2048, 4096, 8192};
   const std::vector<std::string_view> patterns{
       "uniform",          "near_diagonal",    "clustered",
-      "separated",        "duplicate_heavy",  "imbalanced",
+      "separated",        "duplicate_heavy",  "duplicate_light",
+      "imbalanced",
       "adversarial_dense", "adversarial_sparse"};
   const std::vector<WassersteinMetric> metrics{WassersteinMetric::w1_linf,
                                                 WassersteinMetric::w2_l2};
 
   std::cout
       << "pattern,rows,columns,metric,experiment,repetitions,rounds,median_us,p95_us,"
-         "prepare_us,candidate_us,graph_us,component_us,solver_us,candidate_density,"
-         "edge_density,average_degree,max_component,components,augmentations,"
-         "greedy_matches,warm_certificates,graph_bytes\n";
+         "prepare_us,candidate_us,graph_us,component_us,solver_us,pricing_us,"
+         "candidate_density,"
+         "edge_density,average_degree,max_degree,max_component,components,augmentations,"
+         "pricing_rounds,priced_edges,pricing_violations,peak_materialized_edges,"
+         "sparse_fallbacks,greedy_matches,warm_certificates,graph_bytes,"
+         "peak_graph_bytes,"
+         "duplicate_groups,duplicate_points_removed\n";
   double sink = 0.0;
   for (std::string_view pattern : patterns) {
+    if (!options.pattern.empty() && pattern != options.pattern) {
+      continue;
+    }
     for (std::size_t size : all_sizes) {
-      if (size > options.max_size) {
+      if (size < options.min_size || size > options.max_size) {
         continue;
       }
       const std::size_t rows = size;
@@ -251,7 +468,7 @@ int main(int argc, char** argv) {
       }
       const std::size_t maximum_dimension = (std::max)(rows, columns);
       if (maximum_dimension > 512 && pattern != "separated" &&
-          pattern != "adversarial_sparse") {
+          pattern != "adversarial_sparse" && !pricing_requested) {
         continue;
       }
       std::vector<std::pair<bottleneck::Diagram, bottleneck::Diagram>> raw_pairs;
@@ -273,8 +490,28 @@ int main(int argc, char** argv) {
           static_cast<double>(pairs.size());
 
       for (WassersteinMetric metric : metrics) {
+        if (!options.metric.empty() && bottleneck::to_string(metric) != options.metric) {
+          continue;
+        }
         const std::vector<NamedConfig> configs = experiment_configs(metric);
-        const std::size_t reference_index = maximum_dimension <= 512 ? 0 : 6;
+        const auto adaptive_reference = std::find_if(
+            configs.begin(), configs.end(),
+            [](const NamedConfig& named) { return named.name == "adaptive"; });
+        const auto priced_reference = std::find_if(
+            configs.begin(), configs.end(),
+            [](const NamedConfig& named) { return named.name == "priced_topk32"; });
+        const bool ordinary_large = maximum_dimension > 512 &&
+                                    pattern != "separated" &&
+                                    pattern != "adversarial_sparse";
+        const std::size_t reference_index = maximum_dimension <= 512
+                                                ? 0
+                                            : ordinary_large
+                                                ? static_cast<std::size_t>(
+                                                      priced_reference -
+                                                      configs.begin())
+                                                : static_cast<std::size_t>(
+                                                      adaptive_reference -
+                                                      configs.begin());
         std::vector<double> reference;
         reference.reserve(pairs.size());
         for (const PreparedPair& pair : pairs) {
@@ -291,6 +528,9 @@ int main(int argc, char** argv) {
           std::shuffle(order.begin(), order.end(), generator);
           for (std::size_t config_index : order) {
             const NamedConfig& named = configs[config_index];
+            if (!selected_experiment(options, named.name)) {
+              continue;
+            }
             if (!should_run(named, rows, columns, pattern)) {
               continue;
             }
@@ -304,7 +544,9 @@ int main(int argc, char** argv) {
                 std::cerr << "result mismatch: pattern=" << pattern
                           << ", rows=" << rows << ", columns=" << columns
                           << ", metric=" << bottleneck::to_string(metric)
-                          << ", experiment=" << named.name << '\n';
+                          << ", experiment=" << named.name
+                          << ", expected=" << std::setprecision(17) << reference[index]
+                          << ", actual=" << result << '\n';
                 return 2;
               }
               sink += result;
@@ -322,18 +564,32 @@ int main(int argc, char** argv) {
             ADD_STAT(active_rows);
             ADD_STAT(active_columns);
             ADD_STAT(augmentations);
+            ADD_STAT(pricing_rounds);
+            ADD_STAT(priced_edges);
+            ADD_STAT(pricing_violations);
+            ADD_STAT(sparse_fallbacks);
             ADD_STAT(component_count);
             ADD_STAT(tiny_components);
             ADD_STAT(greedy_matches);
             ADD_STAT(warm_start_certificates);
+            ADD_STAT(duplicate_groups);
+            ADD_STAT(duplicate_points_removed);
             ADD_STAT(graph_bytes);
             ADD_STAT(candidate_time_ns);
             ADD_STAT(graph_time_ns);
             ADD_STAT(component_time_ns);
             ADD_STAT(solver_time_ns);
+            ADD_STAT(pricing_time_ns);
 #undef ADD_STAT
             total.largest_component =
                 (std::max)(total.largest_component, round_stats.largest_component);
+            total.peak_materialized_edges =
+                (std::max)(total.peak_materialized_edges,
+                           round_stats.peak_materialized_edges);
+            total.max_degree =
+                (std::max)(total.max_degree, round_stats.max_degree);
+            total.peak_graph_bytes =
+                (std::max)(total.peak_graph_bytes, round_stats.peak_graph_bytes);
             calls[config_index] += pairs.size();
           }
         }
@@ -359,6 +615,8 @@ int main(int argc, char** argv) {
                                    (1000.0 * call_count)
                     << ',' << static_cast<double>(stats.solver_time_ns) /
                                    (1000.0 * call_count)
+                    << ',' << static_cast<double>(stats.pricing_time_ns) /
+                                   (1000.0 * call_count)
                     << ',' << (possible == 0.0
                                    ? 0.0
                                    : static_cast<double>(stats.candidate_pairs) / possible)
@@ -368,11 +626,19 @@ int main(int argc, char** argv) {
                     << ',' << (stats.active_rows == 0
                                    ? 0.0
                                    : static_cast<double>(stats.positive_edges) /
-                                         static_cast<double>(stats.active_rows))
-                    << ',' << stats.largest_component << ',' << stats.component_count
-                    << ',' << stats.augmentations << ',' << stats.greedy_matches << ','
-                    << stats.warm_start_certificates << ','
-                    << static_cast<double>(stats.graph_bytes) / call_count << '\n';
+                                          static_cast<double>(stats.active_rows))
+                    << ',' << stats.max_degree << ',' << stats.largest_component << ','
+                    << stats.component_count
+                    << ',' << stats.augmentations << ',' << stats.pricing_rounds << ','
+                    << stats.priced_edges << ',' << stats.pricing_violations << ','
+                    << stats.peak_materialized_edges << ','
+                    << stats.sparse_fallbacks << ','
+                    << stats.greedy_matches << ',' << stats.warm_start_certificates << ','
+                    << static_cast<double>(stats.graph_bytes) / call_count << ','
+                    << stats.peak_graph_bytes << ','
+                    << static_cast<double>(stats.duplicate_groups) / call_count << ','
+                    << static_cast<double>(stats.duplicate_points_removed) / call_count
+                    << '\n';
         }
       }
     }

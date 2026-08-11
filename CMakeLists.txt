@@ -70,4 +70,8 @@ if(BOTTLENECK_BUILD_BENCHMARKS)
     add_executable(wasserstein_core_bench benchmarks/wasserstein_core_bench.cpp)
     target_link_libraries(wasserstein_core_bench PRIVATE bottleneck::core)
     target_compile_features(wasserstein_core_bench PRIVATE cxx_std_20)
+
+    add_executable(wasserstein_batch_bench benchmarks/wasserstein_batch_bench.cpp)
+    target_link_libraries(wasserstein_batch_bench PRIVATE bottleneck::core)
+    target_compile_features(wasserstein_batch_bench PRIVATE cxx_std_20)
 endif()

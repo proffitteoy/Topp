@@ -3,6 +3,7 @@
 #include <bottleneck/core.hpp>
 
 #include <cstdint>
+#include <memory>
 
 namespace bottleneck {
 
@@ -18,8 +19,11 @@ enum class WassersteinCandidateStrategy {
   dense_scalar,
   dense_blocked,
   dense_avx2,
+  dense_parallel,
   sweep_binary,
   sweep_two_pointer,
+  topk_pricing_full_scan,
+  topk_pricing_sweep,
   adaptive,
 };
 
@@ -27,12 +31,20 @@ enum class WassersteinGraphStrategy {
   dense_matrix,
   csr,
   row_vectors,
+  fixed_degree_4,
+  fixed_degree_8,
+  fixed_degree_16,
+  fixed_degree_32,
+  bitmask_lazy,
+  block_sparse_16,
+  block_sparse_32,
   adaptive,
 };
 
 enum class WassersteinMatcherStrategy {
   dense_hungarian,
   dense_sap,
+  dense_sap_row_reduction,
   sparse_sap,
   adaptive,
 };
@@ -51,13 +63,21 @@ enum class WassersteinWarmStart {
   global_descending,
 };
 
+enum class WassersteinDuplicateStrategy {
+  none,
+  exact,
+  adaptive,
+};
+
 struct WassersteinConfig {
   WassersteinMetric metric = WassersteinMetric::w1_linf;
-  WassersteinCandidateStrategy candidates = WassersteinCandidateStrategy::dense_scalar;
-  WassersteinGraphStrategy graph = WassersteinGraphStrategy::dense_matrix;
-  WassersteinMatcherStrategy matcher = WassersteinMatcherStrategy::dense_hungarian;
-  WassersteinComponentStrategy components = WassersteinComponentStrategy::none;
-  WassersteinWarmStart warm_start = WassersteinWarmStart::none;
+  WassersteinCandidateStrategy candidates = WassersteinCandidateStrategy::adaptive;
+  WassersteinGraphStrategy graph = WassersteinGraphStrategy::adaptive;
+  WassersteinMatcherStrategy matcher = WassersteinMatcherStrategy::adaptive;
+  WassersteinComponentStrategy components = WassersteinComponentStrategy::adaptive;
+  WassersteinWarmStart warm_start = WassersteinWarmStart::global_descending;
+  WassersteinDuplicateStrategy duplicates = WassersteinDuplicateStrategy::adaptive;
+  std::size_t top_k = 8;
 };
 
 struct WassersteinStats {
@@ -68,17 +88,49 @@ struct WassersteinStats {
   std::uint64_t active_rows = 0;
   std::uint64_t active_columns = 0;
   std::uint64_t augmentations = 0;
+  std::uint64_t pricing_rounds = 0;
+  std::uint64_t priced_edges = 0;
+  std::uint64_t pricing_violations = 0;
+  std::uint64_t peak_materialized_edges = 0;
+  std::uint64_t max_degree = 0;
+  std::uint64_t sparse_fallbacks = 0;
   std::uint64_t component_count = 0;
   std::uint64_t largest_component = 0;
   std::uint64_t tiny_components = 0;
   std::uint64_t greedy_matches = 0;
   std::uint64_t warm_start_certificates = 0;
+  std::uint64_t duplicate_groups = 0;
+  std::uint64_t duplicate_points_removed = 0;
   std::uint64_t graph_bytes = 0;
+  std::uint64_t peak_graph_bytes = 0;
   std::uint64_t prepare_time_ns = 0;
   std::uint64_t candidate_time_ns = 0;
   std::uint64_t graph_time_ns = 0;
   std::uint64_t component_time_ns = 0;
   std::uint64_t solver_time_ns = 0;
+  std::uint64_t pricing_time_ns = 0;
+};
+
+class WassersteinWorkspace {
+ public:
+  struct Impl;
+
+  WassersteinWorkspace();
+  ~WassersteinWorkspace();
+  WassersteinWorkspace(WassersteinWorkspace&&) noexcept;
+  WassersteinWorkspace& operator=(WassersteinWorkspace&&) noexcept;
+  WassersteinWorkspace(const WassersteinWorkspace&) = delete;
+  WassersteinWorkspace& operator=(const WassersteinWorkspace&) = delete;
+
+ private:
+  std::unique_ptr<Impl> impl_;
+
+  friend double wasserstein_distance(
+      const PreparedDiagram&, const PreparedDiagram&, WassersteinWorkspace&,
+      const WassersteinConfig&, WassersteinStats*);
+  friend void wasserstein_distances(
+      const PreparedDiagram&, std::span<const PreparedDiagram>, std::span<double>,
+      WassersteinWorkspace&, const WassersteinConfig&, WassersteinStats*);
 };
 
 [[nodiscard]] double wasserstein_distance(
@@ -88,8 +140,36 @@ struct WassersteinStats {
     WassersteinStats* stats = nullptr);
 
 [[nodiscard]] double wasserstein_distance(
+    const PreparedDiagram& first,
+    const PreparedDiagram& second,
+    WassersteinWorkspace& workspace,
+    const WassersteinConfig& config = {},
+    WassersteinStats* stats = nullptr);
+
+[[nodiscard]] double wasserstein_distance(
     const Diagram& first,
     const Diagram& second,
+    const WassersteinConfig& config = {},
+    WassersteinStats* stats = nullptr);
+
+void wasserstein_distances(
+    const PreparedDiagram& query,
+    std::span<const PreparedDiagram> diagrams,
+    std::span<double> output,
+    const WassersteinConfig& config = {},
+    WassersteinStats* stats = nullptr);
+
+void wasserstein_distances(
+    const PreparedDiagram& query,
+    std::span<const PreparedDiagram> diagrams,
+    std::span<double> output,
+    WassersteinWorkspace& workspace,
+    const WassersteinConfig& config = {},
+    WassersteinStats* stats = nullptr);
+
+[[nodiscard]] std::vector<double> wasserstein_distances(
+    const PreparedDiagram& query,
+    std::span<const PreparedDiagram> diagrams,
     const WassersteinConfig& config = {},
     WassersteinStats* stats = nullptr);
 
@@ -99,5 +179,6 @@ struct WassersteinStats {
 [[nodiscard]] const char* to_string(WassersteinMatcherStrategy strategy) noexcept;
 [[nodiscard]] const char* to_string(WassersteinComponentStrategy strategy) noexcept;
 [[nodiscard]] const char* to_string(WassersteinWarmStart strategy) noexcept;
+[[nodiscard]] const char* to_string(WassersteinDuplicateStrategy strategy) noexcept;
 
 }  // namespace bottleneck

@@ -6,7 +6,7 @@
 
 C++ exact Bottleneck 内核第一阶段已覆盖 Small/Medium-N 算法 zoo、large-N 几何 matching、approximation-assisted exact refinement 和二维 dispatcher。Python 外壳、发行包名、公共 API、wheel 和构建后端暂不处理；没有修改外部 GUDHI 源码树。
 
-Wasserstein 已完成方案 Phase 1/2 的首个 exact 内核：DSR 正 saving 剪枝、`W1-L∞`/`W2-L2` rotated sweep、dense primal-dual assignment 与四类数据 benchmark。当前证据和限制见 [docs/WASSERSTEIN_KERNEL.md](docs/WASSERSTEIN_KERNEL.md)。
+Wasserstein 已形成可正交配置的 exact 内核实验矩阵：blocked/AVX2/sweep candidates，多类 weighted graph，dense/sparse primal-dual，component/tiny-component，稳定 matching 重算，duplicate mass compression，以及 reusable batch workspace。当前证据、淘汰项和第二轮缺口见 [docs/WASSERSTEIN_KERNEL.md](docs/WASSERSTEIN_KERNEL.md)。
 
 - GUDHI 源码：`F:\GUDHI\gudhi-devel`
 - 当前源码与历史工作的核查结果：[docs/BASELINE.md](docs/BASELINE.md)

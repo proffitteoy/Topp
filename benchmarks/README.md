@@ -27,13 +27,16 @@ build\manual\bottleneck_core_bench.exe --repetitions 100
 build\manual\bottleneck_grid_bench.exe --repetitions 20 --rounds 5
 build\manual\bottleneck_batch_bench.exe --repetitions 5
 build\manual\bottleneck_large_bench.exe --repetitions 3
-build\manual\wasserstein_core_bench.exe --repetitions 30
+build\manual\wasserstein_core_bench.exe --repetitions 5 --rounds 7 --max-size 128
+build\manual\wasserstein_batch_bench.exe --repetitions 5 --rounds 21
 ```
 
 `bottleneck_grid_bench` 覆盖 uniform、near-diagonal、clustered、repeated、separated，以及对称/非对称 `8–256` 点输入，并输出 exact cross-edge density。多轮模式会打乱配置执行顺序并报告 median/p95；单轮输出只用于探索，不作为稳定回归阈值。
 
 `bottleneck_large_bench` 覆盖 `32–4096` 点、稠密/稀疏/重复/分离分布和非对称输入，对比 geometric refinement、全候选 geometric matcher、默认 dispatcher 与旧 adaptive 路径。`--max-points N` 可限制交叉区实验；当前输出是固定种子多输入的均值，仍属于内核探索数据。
 
-`wasserstein_core_bench` 覆盖 uniform、near-diagonal、clustered、separated 四类 `8–256` 点输入，对比 dense DSR、rotated sweep 和 adaptive dispatcher，并输出候选密度、正 saving 密度、活跃行列与增广次数。当前仍是固定顺序的探索性 microbenchmark，结果不能作为稳定回归阈值。
+`wasserstein_core_bench` 覆盖 uniform、near-diagonal、clustered、separated、duplicate-heavy、imbalanced、adversarial-dense、adversarial-sparse 的 `8–8192` 规模清单。配置按轮随机执行并报告 median/p95，同时拆分 prepare/candidate/graph/component/solver/pricing 时间，并记录 pricing rounds、priced/violated/materialized edges、max degree 与 peak graph bytes。可用 `--min-size`、`--max-size`、`--pattern`、`--metric`、`--repetitions` 和 `--rounds` 缩小实验矩阵；`--experiments priced_topk8,priced_sweep_topk8,adaptive` 可在同一进程中随机轮序配对多个指定配置，旧的单值 `--experiment` 仍兼容。超过 512 的普通分布只有在显式选择 priced 实验时才会开放，其他 dense baseline 继续跳过。
+
+`wasserstein_batch_bench` 比较 one-shot、手写 prepared loop、native caller-buffer、显式 reusable workspace 和 native allocated-vector。五种模式先预热，再逐轮随机执行并报告 median/p95；固定顺序的单次数字不能用于判断 batch/workspace 收益。
 
 生成的原始结果放入 `benchmarks/results/`，该目录默认忽略。可复现脚本、脱敏固定输入或输入清单以及最终汇总应纳入版本控制。

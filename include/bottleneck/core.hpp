@@ -115,6 +115,10 @@ class PreparedDiagram {
   [[nodiscard]] double max_finite_half_persistence() const noexcept;
   [[nodiscard]] const std::vector<double>& sorted_finite_births() const noexcept;
   [[nodiscard]] const std::vector<std::size_t>& finite_birth_order() const noexcept;
+  [[nodiscard]] const std::vector<std::size_t>&
+  finite_duplicate_representatives() const noexcept;
+  [[nodiscard]] const std::vector<std::size_t>&
+  finite_duplicate_multiplicities() const noexcept;
   [[nodiscard]] double max_finite_diagonal_distance() const noexcept;
   [[nodiscard]] const std::vector<double>& positive_infinite_births() const noexcept;
   [[nodiscard]] const std::vector<double>& negative_infinite_deaths() const noexcept;
@@ -132,6 +136,8 @@ class PreparedDiagram {
   double max_finite_half_persistence_ = 0.0;
   std::vector<double> sorted_finite_births_;
   std::vector<std::size_t> finite_birth_order_;
+  std::vector<std::size_t> finite_duplicate_representatives_;
+  std::vector<std::size_t> finite_duplicate_multiplicities_;
   double max_finite_diagonal_distance_ = 0.0;
   std::vector<double> positive_infinite_births_;
   std::vector<double> negative_infinite_deaths_;

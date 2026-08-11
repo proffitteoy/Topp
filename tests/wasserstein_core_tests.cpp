@@ -1,6 +1,7 @@
 #include <bottleneck/wasserstein.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdlib>
@@ -19,6 +20,7 @@ using bottleneck::PreparedDiagram;
 using bottleneck::WassersteinCandidateStrategy;
 using bottleneck::WassersteinComponentStrategy;
 using bottleneck::WassersteinConfig;
+using bottleneck::WassersteinDuplicateStrategy;
 using bottleneck::WassersteinGraphStrategy;
 using bottleneck::WassersteinMatcherStrategy;
 using bottleneck::WassersteinMetric;
@@ -102,14 +104,24 @@ double brute_force_distance(const Diagram& first, const Diagram& second,
 void deterministic_cases() {
   const Diagram empty;
   const Diagram point{{0.0, 2.0}};
-  const WassersteinConfig w1_dense{WassersteinMetric::w1_linf,
-                                    WassersteinCandidateStrategy::dense_scalar};
-  const WassersteinConfig w1_sweep{WassersteinMetric::w1_linf,
-                                    WassersteinCandidateStrategy::sweep_binary};
-  const WassersteinConfig w2_dense{WassersteinMetric::w2_l2,
-                                    WassersteinCandidateStrategy::dense_scalar};
-  const WassersteinConfig w2_sweep{WassersteinMetric::w2_l2,
-                                    WassersteinCandidateStrategy::sweep_binary};
+  const WassersteinConfig w1_dense{
+      WassersteinMetric::w1_linf, WassersteinCandidateStrategy::dense_scalar,
+      WassersteinGraphStrategy::dense_matrix,
+      WassersteinMatcherStrategy::dense_hungarian,
+      WassersteinComponentStrategy::none, WassersteinWarmStart::none};
+  const WassersteinConfig w1_sweep{
+      WassersteinMetric::w1_linf, WassersteinCandidateStrategy::sweep_binary,
+      WassersteinGraphStrategy::dense_matrix, WassersteinMatcherStrategy::dense_sap,
+      WassersteinComponentStrategy::none, WassersteinWarmStart::none};
+  const WassersteinConfig w2_dense{
+      WassersteinMetric::w2_l2, WassersteinCandidateStrategy::dense_scalar,
+      WassersteinGraphStrategy::dense_matrix,
+      WassersteinMatcherStrategy::dense_hungarian,
+      WassersteinComponentStrategy::none, WassersteinWarmStart::none};
+  const WassersteinConfig w2_sweep{
+      WassersteinMetric::w2_l2, WassersteinCandidateStrategy::sweep_binary,
+      WassersteinGraphStrategy::dense_matrix, WassersteinMatcherStrategy::dense_sap,
+      WassersteinComponentStrategy::none, WassersteinWarmStart::none};
 
   expect_near(bottleneck::wasserstein_distance(empty, empty, w1_sweep), 0.0,
               "empty W1");
@@ -215,7 +227,7 @@ Diagram random_diagram(std::mt19937_64& generator, std::size_t size) {
 }
 
 std::vector<WassersteinConfig> experiment_configs(WassersteinMetric metric) {
-  return {
+  std::vector<WassersteinConfig> configs{
       {metric, WassersteinCandidateStrategy::dense_scalar,
        WassersteinGraphStrategy::dense_matrix,
        WassersteinMatcherStrategy::dense_hungarian,
@@ -224,11 +236,19 @@ std::vector<WassersteinConfig> experiment_configs(WassersteinMetric metric) {
        WassersteinGraphStrategy::dense_matrix,
        WassersteinMatcherStrategy::dense_sap,
        WassersteinComponentStrategy::none, WassersteinWarmStart::none},
+      {metric, WassersteinCandidateStrategy::dense_scalar,
+       WassersteinGraphStrategy::dense_matrix,
+       WassersteinMatcherStrategy::dense_sap_row_reduction,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none},
       {metric, WassersteinCandidateStrategy::dense_blocked,
        WassersteinGraphStrategy::dense_matrix,
        WassersteinMatcherStrategy::dense_sap,
        WassersteinComponentStrategy::none, WassersteinWarmStart::none},
       {metric, WassersteinCandidateStrategy::dense_avx2,
+       WassersteinGraphStrategy::dense_matrix,
+       WassersteinMatcherStrategy::dense_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none},
+      {metric, WassersteinCandidateStrategy::dense_parallel,
        WassersteinGraphStrategy::dense_matrix,
        WassersteinMatcherStrategy::dense_sap,
        WassersteinComponentStrategy::none, WassersteinWarmStart::none},
@@ -242,6 +262,38 @@ std::vector<WassersteinConfig> experiment_configs(WassersteinMetric metric) {
        WassersteinComponentStrategy::none, WassersteinWarmStart::none},
       {metric, WassersteinCandidateStrategy::sweep_binary,
        WassersteinGraphStrategy::csr,
+       WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none},
+      {metric, WassersteinCandidateStrategy::sweep_binary,
+       WassersteinGraphStrategy::fixed_degree_4,
+       WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none},
+      {metric, WassersteinCandidateStrategy::sweep_binary,
+       WassersteinGraphStrategy::fixed_degree_8,
+       WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none},
+      {metric, WassersteinCandidateStrategy::sweep_binary,
+       WassersteinGraphStrategy::fixed_degree_16,
+       WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none},
+      {metric, WassersteinCandidateStrategy::sweep_binary,
+       WassersteinGraphStrategy::fixed_degree_32,
+       WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none},
+      {metric, WassersteinCandidateStrategy::sweep_binary,
+       WassersteinGraphStrategy::bitmask_lazy,
+       WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none},
+      {metric, WassersteinCandidateStrategy::sweep_binary,
+       WassersteinGraphStrategy::bitmask_lazy,
+       WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::tiny_sparse, WassersteinWarmStart::none},
+      {metric, WassersteinCandidateStrategy::sweep_binary,
+       WassersteinGraphStrategy::block_sparse_16,
+       WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none},
+      {metric, WassersteinCandidateStrategy::sweep_binary,
+       WassersteinGraphStrategy::block_sparse_32,
        WassersteinMatcherStrategy::sparse_sap,
        WassersteinComponentStrategy::none, WassersteinWarmStart::none},
       {metric, WassersteinCandidateStrategy::sweep_two_pointer,
@@ -261,12 +313,68 @@ std::vector<WassersteinConfig> experiment_configs(WassersteinMetric metric) {
        WassersteinMatcherStrategy::sparse_sap,
        WassersteinComponentStrategy::tiny_sparse,
        WassersteinWarmStart::row_max},
+      {metric, WassersteinCandidateStrategy::topk_pricing_full_scan,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 2},
+      {metric, WassersteinCandidateStrategy::topk_pricing_full_scan,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 4},
+      {metric, WassersteinCandidateStrategy::topk_pricing_full_scan,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 8},
+      {metric, WassersteinCandidateStrategy::topk_pricing_full_scan,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 16},
+      {metric, WassersteinCandidateStrategy::topk_pricing_full_scan,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 32},
+      {metric, WassersteinCandidateStrategy::topk_pricing_sweep,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 2},
+      {metric, WassersteinCandidateStrategy::topk_pricing_sweep,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 4},
+      {metric, WassersteinCandidateStrategy::topk_pricing_sweep,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 8},
+      {metric, WassersteinCandidateStrategy::topk_pricing_sweep,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 16},
+      {metric, WassersteinCandidateStrategy::topk_pricing_sweep,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 32},
       {metric, WassersteinCandidateStrategy::adaptive,
        WassersteinGraphStrategy::adaptive,
        WassersteinMatcherStrategy::adaptive,
        WassersteinComponentStrategy::adaptive,
        WassersteinWarmStart::global_descending},
+      {metric, WassersteinCandidateStrategy::adaptive,
+       WassersteinGraphStrategy::adaptive,
+       WassersteinMatcherStrategy::adaptive,
+       WassersteinComponentStrategy::adaptive,
+       WassersteinWarmStart::global_descending,
+       WassersteinDuplicateStrategy::exact},
+      {metric, WassersteinCandidateStrategy::adaptive,
+       WassersteinGraphStrategy::adaptive,
+       WassersteinMatcherStrategy::adaptive,
+       WassersteinComponentStrategy::adaptive,
+       WassersteinWarmStart::global_descending,
+       WassersteinDuplicateStrategy::adaptive},
   };
+  for (std::size_t index = 0; index + 3 < configs.size(); ++index) {
+    configs[index].duplicates = WassersteinDuplicateStrategy::none;
+  }
+  return configs;
 }
 
 void brute_force_differential() {
@@ -290,11 +398,11 @@ void brute_force_differential() {
 void variant_differential() {
   std::mt19937_64 generator(0x5A33BULL);
   std::uniform_int_distribution<int> size(0, 24);
+  constexpr int trial_count = 500;
   for (WassersteinMetric metric :
        {WassersteinMetric::w1_linf, WassersteinMetric::w2_l2}) {
-    const WassersteinConfig dense{metric, WassersteinCandidateStrategy::dense_scalar};
     const auto configs = experiment_configs(metric);
-    for (int trial = 0; trial < 500; ++trial) {
+    for (int trial = 0; trial < trial_count; ++trial) {
       Diagram first = random_diagram(generator, static_cast<std::size_t>(size(generator)));
       Diagram second = random_diagram(generator, static_cast<std::size_t>(size(generator)));
       if (trial % 13 == 0 && !first.empty()) {
@@ -306,11 +414,30 @@ void variant_differential() {
       const PreparedDiagram prepared_first(first);
       const PreparedDiagram prepared_second(second);
       const double expected =
-          bottleneck::wasserstein_distance(prepared_first, prepared_second, dense);
-      for (const WassersteinConfig& config : configs) {
-        expect_near(bottleneck::wasserstein_distance(prepared_first, prepared_second,
-                                                      config),
-                    expected, "variant differential trial " + std::to_string(trial));
+          bottleneck::wasserstein_distance(prepared_first, prepared_second,
+                                            configs.front());
+      for (std::size_t config_index = 0; config_index < configs.size(); ++config_index) {
+        const WassersteinConfig& config = configs[config_index];
+        bottleneck::WassersteinStats stats;
+        const double actual = bottleneck::wasserstein_distance(
+            prepared_first, prepared_second, config, &stats);
+        const double diagnostic_scale =
+            (std::max)({1.0, std::fabs(actual), std::fabs(expected)});
+        if (std::fabs(actual - expected) > 2e-12 * diagnostic_scale &&
+            (config.candidates ==
+                 WassersteinCandidateStrategy::topk_pricing_full_scan ||
+             config.candidates ==
+                 WassersteinCandidateStrategy::topk_pricing_sweep)) {
+          std::cerr << "top-k diagnostic: rounds=" << stats.pricing_rounds
+                    << ", priced=" << stats.priced_edges
+                    << ", violations=" << stats.pricing_violations
+                    << ", materialized=" << stats.peak_materialized_edges
+                    << ", positive=" << stats.positive_edges << '\n';
+        }
+        expect_near(actual,
+                    expected, "variant differential config " +
+                                  std::to_string(config_index) + " trial " +
+                                  std::to_string(trial));
       }
       expect_near(bottleneck::wasserstein_distance(prepared_second, prepared_first,
                                                     configs.back()),
@@ -319,12 +446,157 @@ void variant_differential() {
   }
 }
 
+void rectangular_dense_sap_differential() {
+  std::mt19937_64 generator(0x5A9A11ULL);
+  constexpr std::array<std::pair<std::size_t, std::size_t>, 6> shapes{{
+      {1, 64}, {64, 1}, {7, 64}, {64, 7}, {31, 128}, {128, 31},
+  }};
+  for (WassersteinMetric metric :
+       {WassersteinMetric::w1_linf, WassersteinMetric::w2_l2}) {
+    const WassersteinConfig baseline{
+        metric, WassersteinCandidateStrategy::dense_scalar,
+        WassersteinGraphStrategy::dense_matrix,
+        WassersteinMatcherStrategy::dense_hungarian,
+        WassersteinComponentStrategy::none, WassersteinWarmStart::none};
+    WassersteinConfig rectangular = baseline;
+    rectangular.matcher = WassersteinMatcherStrategy::dense_sap;
+    for (const auto [rows, columns] : shapes) {
+      for (int trial = 0; trial < 12; ++trial) {
+        Diagram first = random_diagram(generator, rows);
+        Diagram second = random_diagram(generator, columns);
+        if (trial % 4 == 0) {
+          first.push_back(first.front());
+          second.push_back(second.front());
+        }
+        const double expected = bottleneck::wasserstein_distance(first, second, baseline);
+        expect_near(bottleneck::wasserstein_distance(first, second, rectangular),
+                    expected, "rectangular dense SAP " + std::to_string(rows) + "x" +
+                                  std::to_string(columns),
+                    2e-11);
+      }
+    }
+  }
+}
+
+void near_identical_dense_w2_regression() {
+  Diagram first;
+  Diagram second;
+  first.reserve(128);
+  second.reserve(128);
+  long double expected_power = 0;
+  for (std::size_t index = 0; index < 128; ++index) {
+    const double birth = -0.01 + static_cast<double>(index) * 1e-4;
+    const double death = birth + 2.0 + static_cast<double>(index % 7) * 1e-5;
+    const double shift = static_cast<double>(1 + index % 3) * 1e-9;
+    first.push_back({birth, death});
+    second.push_back({birth + shift, death + shift});
+    expected_power += cross_power(first.back(), second.back(),
+                                  WassersteinMetric::w2_l2);
+  }
+  const double expected = static_cast<double>(std::sqrt(expected_power));
+  const auto configs = experiment_configs(WassersteinMetric::w2_l2);
+  for (std::size_t config_index = 0; config_index < configs.size(); ++config_index) {
+    expect_near(bottleneck::wasserstein_distance(first, second,
+                                                  configs[config_index]),
+                expected,
+                "near-identical dense W2 config " +
+                    std::to_string(config_index),
+                2e-14);
+  }
+}
+
+void edge_case_differential() {
+  const std::vector<std::pair<Diagram, Diagram>> cases{
+      {Diagram{{0.0, 1.0}, {0.0, 1.0}, {0.0, 1.0}},
+       Diagram{{0.0, 1.0}, {0.0, 1.0}}},
+      {Diagram{{0.0, 1.0}, {2.0, 3.0}},
+       Diagram{{0.5, 1.5}, {0.5, 1.5}, {2.5, 3.5}, {8.0, 9.0}}},
+      {Diagram{{-4.0, -3.999999999}, {0.0, 1e-9}, {4.0, 4.000000001}},
+       Diagram{{-4.0, -3.999999998}, {4.0, 4.000000002}}},
+      {Diagram{{1e100, 1e100 + 1e90}, {-1e100, -1e100 + 2e90}},
+       Diagram{{1e100 + 2e89, 1e100 + 1.2e90}}},
+      {Diagram{{-2.0, 0.0}},
+       Diagram{{-2.0, 0.0}, {-1.0, 1.0}, {0.0, 2.0}, {1.0, 3.0}, {2.0, 4.0}}},
+  };
+  for (WassersteinMetric metric :
+       {WassersteinMetric::w1_linf, WassersteinMetric::w2_l2}) {
+    const auto configs = experiment_configs(metric);
+    for (std::size_t case_index = 0; case_index < cases.size(); ++case_index) {
+      const double expected =
+          brute_force_distance(cases[case_index].first, cases[case_index].second, metric);
+      for (const WassersteinConfig& config : configs) {
+        expect_near(bottleneck::wasserstein_distance(cases[case_index].first,
+                                                      cases[case_index].second,
+                                                      config),
+                    expected,
+                    "edge-case differential " + std::to_string(case_index), 2e-11);
+      }
+    }
+  }
+
+  const double infinity = std::numeric_limits<double>::infinity();
+  const Diagram first{{0.0, 2.0}, {1.0, infinity}, {-infinity, 3.0}};
+  const Diagram second{{0.2, 2.2}, {2.0, infinity}, {-infinity, 5.0}};
+  for (WassersteinMetric metric :
+       {WassersteinMetric::w1_linf, WassersteinMetric::w2_l2}) {
+    const auto configs = experiment_configs(metric);
+    const double expected = bottleneck::wasserstein_distance(first, second, configs.front());
+    for (const WassersteinConfig& config : configs) {
+      expect_near(bottleneck::wasserstein_distance(first, second, config), expected,
+                  "essential plus finite differential");
+    }
+  }
+}
+
+void batch_cases() {
+  const PreparedDiagram query(Diagram{{0.0, 2.0}, {4.0, 5.0}});
+  const std::vector<PreparedDiagram> targets{
+      PreparedDiagram(Diagram{}),
+      PreparedDiagram(Diagram{{0.1, 2.1}}),
+      PreparedDiagram(Diagram{{0.2, 2.2}, {4.1, 5.1}}),
+  };
+  const auto allocated = bottleneck::wasserstein_distances(query, targets);
+  std::vector<double> output(targets.size(), -1.0);
+  bottleneck::wasserstein_distances(query, targets, output);
+  bottleneck::WassersteinWorkspace workspace;
+  std::vector<double> workspace_output(targets.size(), -1.0);
+  bottleneck::wasserstein_distances(query, targets, workspace_output, workspace);
+  for (std::size_t index = 0; index < targets.size(); ++index) {
+    const double expected = bottleneck::wasserstein_distance(query, targets[index]);
+    expect_near(allocated[index], expected, "allocated Wasserstein batch");
+    expect_near(output[index], expected, "caller-buffer Wasserstein batch");
+    expect_near(workspace_output[index], expected,
+                "workspace Wasserstein batch");
+    expect_near(bottleneck::wasserstein_distance(query, targets[index], workspace),
+                expected, "workspace Wasserstein distance");
+  }
+  bool rejected = false;
+  try {
+    std::vector<double> wrong_size(targets.size() - 1);
+    bottleneck::wasserstein_distances(query, targets, wrong_size);
+  } catch (const std::invalid_argument&) {
+    rejected = true;
+  }
+  if (!rejected) {
+    fail("Wasserstein batch must reject a mismatched output span");
+  }
+}
+
 }  // namespace
 
 int main() {
   deterministic_cases();
+  std::cout << "deterministic passed\n" << std::flush;
   brute_force_differential();
+  std::cout << "brute-force differential passed\n" << std::flush;
   variant_differential();
+  std::cout << "variant differential passed\n" << std::flush;
+  rectangular_dense_sap_differential();
+  std::cout << "rectangular dense SAP differential passed\n" << std::flush;
+  near_identical_dense_w2_regression();
+  std::cout << "near-identical dense W2 regression passed\n" << std::flush;
+  edge_case_differential();
+  batch_cases();
   std::cout << "wasserstein_core_tests: all checks passed\n";
   return 0;
 }

@@ -1712,6 +1712,34 @@ PreparedDiagram::PreparedDiagram(const Diagram& diagram) {
   for (std::size_t index : finite_birth_order_) {
     sorted_finite_births_.push_back(finite_births_[index]);
   }
+  std::vector<std::size_t> duplicate_order = finite_birth_order_;
+  for (std::size_t begin = 0; begin < duplicate_order.size();) {
+    std::size_t end = begin + 1;
+    while (end < duplicate_order.size() &&
+           finite_births_[duplicate_order[end]] ==
+               finite_births_[duplicate_order[begin]]) {
+      ++end;
+    }
+    std::stable_sort(duplicate_order.begin() + static_cast<std::ptrdiff_t>(begin),
+                     duplicate_order.begin() + static_cast<std::ptrdiff_t>(end),
+                     [&](std::size_t first, std::size_t second) {
+                       return finite_deaths_[first] < finite_deaths_[second];
+                     });
+    begin = end;
+  }
+  for (std::size_t index : duplicate_order) {
+    if (!finite_duplicate_representatives_.empty()) {
+      const std::size_t representative =
+          finite_duplicate_representatives_.back();
+      if (finite_births_[representative] == finite_births_[index] &&
+          finite_deaths_[representative] == finite_deaths_[index]) {
+        ++finite_duplicate_multiplicities_.back();
+        continue;
+      }
+    }
+    finite_duplicate_representatives_.push_back(index);
+    finite_duplicate_multiplicities_.push_back(1);
+  }
   finite_midpoint_order_.resize(finite_midpoints_.size());
   std::iota(finite_midpoint_order_.begin(), finite_midpoint_order_.end(), std::size_t{0});
   std::stable_sort(finite_midpoint_order_.begin(), finite_midpoint_order_.end(),
@@ -1762,6 +1790,16 @@ const std::vector<double>& PreparedDiagram::sorted_finite_births() const noexcep
 
 const std::vector<std::size_t>& PreparedDiagram::finite_birth_order() const noexcept {
   return finite_birth_order_;
+}
+
+const std::vector<std::size_t>&
+PreparedDiagram::finite_duplicate_representatives() const noexcept {
+  return finite_duplicate_representatives_;
+}
+
+const std::vector<std::size_t>&
+PreparedDiagram::finite_duplicate_multiplicities() const noexcept {
+  return finite_duplicate_multiplicities_;
 }
 
 double PreparedDiagram::max_finite_diagonal_distance() const noexcept {
