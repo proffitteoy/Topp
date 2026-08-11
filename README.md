@@ -1,16 +1,19 @@
-# Python Bottleneck Distance 优化库
+# Persistence Diagram Distance 优化内核
 
-本仓库用于设计、实现和发布一个独立的高性能 Python Bottleneck Distance 库。GUDHI `bottleneck_distance` 是正确性 oracle、性能基线和可参考实现，不是本项目的产品边界。
+本仓库用于设计高性能 Persistence Diagram 距离内核。当前产品边界仍以独立 Python Bottleneck Distance 库为主；Wasserstein Distance 暂处于纯 C++ 内核优化实验阶段。GUDHI 是正确性 oracle、性能基线和可参考实现，不是本项目的产品边界。
 
 ## 当前状态
 
-C++ exact 内核优化实验正在进行，Python 外壳、发行包名、公共 API、wheel 和构建后端暂不处理。当前已有 reference solver、24,000 种可组合实验配置、分布化 benchmark 与 GUDHI `e=0` 差分验证；没有修改外部 GUDHI 源码树。
+C++ exact Bottleneck 内核第一阶段已覆盖 Small/Medium-N 算法 zoo、large-N 几何 matching、approximation-assisted exact refinement 和二维 dispatcher。Python 外壳、发行包名、公共 API、wheel 和构建后端暂不处理；没有修改外部 GUDHI 源码树。
+
+Wasserstein 已完成方案 Phase 1/2 的首个 exact 内核：DSR 正 saving 剪枝、`W1-L∞`/`W2-L2` rotated sweep、dense primal-dual assignment 与四类数据 benchmark。当前证据和限制见 [docs/WASSERSTEIN_KERNEL.md](docs/WASSERSTEIN_KERNEL.md)。
 
 - GUDHI 源码：`F:\GUDHI\gudhi-devel`
 - 当前源码与历史工作的核查结果：[docs/BASELINE.md](docs/BASELINE.md)
 - 独立 Python 库的产品边界：[docs/PROJECT_SCOPE.md](docs/PROJECT_SCOPE.md)
 - 完整优化路线：[docs/优化方向.md](docs/优化方向.md)
 - 内核实验、正确性矩阵与性能结论：[docs/KERNEL_EXPERIMENTS.md](docs/KERNEL_EXPERIMENTS.md)
+- Bottleneck 第一阶段报告：[docs/PHASE1_KERNEL_REPORT.md](docs/PHASE1_KERNEL_REPORT.md)
 - 历史 small-N 补丁副本：[patches/0001-gudhi-3.13-small-n-neighbors.patch](patches/0001-gudhi-3.13-small-n-neighbors.patch)
 - 基准测试约定：[benchmarks/README.md](benchmarks/README.md)
 
@@ -37,5 +40,5 @@ patches/     历史参考及实验补丁；不是最终发布形态
 
 ## 下一步
 
-继续校准 128–1024 点的 dispatcher 阈值、统计内存分配，并把 reusable workspace 扩展到候选与 adjacency 缓冲区。prepared/native batch 和调用方输出缓冲区已进入内核。内核实验完成前不开始 Python 包装；只有需要公平源码基线时才构建 GUDHI，并保持其外部源码树现有文件不受影响。
+继续补充 Bottleneck 的峰值内存/分配计数、构造型深增广压力测试和跨编译器复测。prepared/native batch 和调用方输出缓冲区已进入内核。内核验证收口前不开始 Python 包装；只有需要公平源码基线时才构建 GUDHI，并保持其外部源码树现有文件不受影响。
 "# Tide" 

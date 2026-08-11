@@ -28,6 +28,8 @@ enum class ThresholdStrategy {
   quickselect,
   incremental,
   incremental_blocked,
+  geometric_refinement,
+  adaptive,
 };
 
 enum class DistanceStrategy {
@@ -62,6 +64,7 @@ enum class MatcherStrategy {
   adaptive,
   hopcroft_karp,
   greedy_hopcroft_karp,
+  geometric_hopcroft_karp,
 };
 
 enum class VertexOrder {
@@ -71,7 +74,7 @@ enum class VertexOrder {
 
 struct SolverConfig {
   CandidateStrategy candidates = CandidateStrategy::sort_unique_clipped;
-  ThresholdStrategy threshold = ThresholdStrategy::quickselect;
+  ThresholdStrategy threshold = ThresholdStrategy::adaptive;
   DistanceStrategy distance = DistanceStrategy::dense_aos;
   AdjacencyStrategy adjacency = AdjacencyStrategy::adaptive;
   MatcherStrategy matcher = MatcherStrategy::adaptive;
@@ -92,6 +95,9 @@ struct SolverStats {
   std::uint64_t component_count = 0;
   std::uint64_t component_rejects = 0;
   std::uint64_t lower_bound_rejects = 0;
+  std::uint64_t geometric_queries = 0;
+  std::uint64_t kd_nodes_visited = 0;
+  std::uint64_t refinement_rounds = 0;
 };
 
 class PreparedDiagram {
@@ -102,6 +108,11 @@ class PreparedDiagram {
   [[nodiscard]] const std::vector<double>& finite_births() const noexcept;
   [[nodiscard]] const std::vector<double>& finite_deaths() const noexcept;
   [[nodiscard]] const std::vector<double>& finite_diagonal_distances() const noexcept;
+  [[nodiscard]] const std::vector<double>& finite_midpoints() const noexcept;
+  [[nodiscard]] const std::vector<double>& finite_half_persistences() const noexcept;
+  [[nodiscard]] const std::vector<double>& sorted_finite_midpoints() const noexcept;
+  [[nodiscard]] const std::vector<std::size_t>& finite_midpoint_order() const noexcept;
+  [[nodiscard]] double max_finite_half_persistence() const noexcept;
   [[nodiscard]] const std::vector<double>& sorted_finite_births() const noexcept;
   [[nodiscard]] const std::vector<std::size_t>& finite_birth_order() const noexcept;
   [[nodiscard]] double max_finite_diagonal_distance() const noexcept;
@@ -114,6 +125,11 @@ class PreparedDiagram {
   std::vector<double> finite_births_;
   std::vector<double> finite_deaths_;
   std::vector<double> finite_diagonal_distances_;
+  std::vector<double> finite_midpoints_;
+  std::vector<double> finite_half_persistences_;
+  std::vector<double> sorted_finite_midpoints_;
+  std::vector<std::size_t> finite_midpoint_order_;
+  double max_finite_half_persistence_ = 0.0;
   std::vector<double> sorted_finite_births_;
   std::vector<std::size_t> finite_birth_order_;
   double max_finite_diagonal_distance_ = 0.0;

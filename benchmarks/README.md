@@ -1,6 +1,6 @@
 # 基准测试约定
 
-本目录同时包含单一均匀规模 microbenchmark 与分布/非对称网格 benchmark。当前阶段只测 C++ exact 内核。
+本目录同时包含单一均匀规模 microbenchmark、分布/非对称 Bottleneck 网格 benchmark，以及 Wasserstein Phase 1/2 内核 benchmark。当前阶段只测 C++ exact 内核。
 
 ## 三层证据
 
@@ -26,8 +26,14 @@ cmd.exe /d /c scripts\build-kernel.cmd
 build\manual\bottleneck_core_bench.exe --repetitions 100
 build\manual\bottleneck_grid_bench.exe --repetitions 20 --rounds 5
 build\manual\bottleneck_batch_bench.exe --repetitions 5
+build\manual\bottleneck_large_bench.exe --repetitions 3
+build\manual\wasserstein_core_bench.exe --repetitions 30
 ```
 
 `bottleneck_grid_bench` 覆盖 uniform、near-diagonal、clustered、repeated、separated，以及对称/非对称 `8–256` 点输入，并输出 exact cross-edge density。多轮模式会打乱配置执行顺序并报告 median/p95；单轮输出只用于探索，不作为稳定回归阈值。
+
+`bottleneck_large_bench` 覆盖 `32–4096` 点、稠密/稀疏/重复/分离分布和非对称输入，对比 geometric refinement、全候选 geometric matcher、默认 dispatcher 与旧 adaptive 路径。`--max-points N` 可限制交叉区实验；当前输出是固定种子多输入的均值，仍属于内核探索数据。
+
+`wasserstein_core_bench` 覆盖 uniform、near-diagonal、clustered、separated 四类 `8–256` 点输入，对比 dense DSR、rotated sweep 和 adaptive dispatcher，并输出候选密度、正 saving 密度、活跃行列与增广次数。当前仍是固定顺序的探索性 microbenchmark，结果不能作为稳定回归阈值。
 
 生成的原始结果放入 `benchmarks/results/`，该目录默认忽略。可复现脚本、脱敏固定输入或输入清单以及最终汇总应纳入版本控制。

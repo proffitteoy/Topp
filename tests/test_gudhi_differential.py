@@ -61,11 +61,25 @@ def assert_same(actual: float, expected: float, label: str) -> None:
 
 def main() -> int:
     root = Path(__file__).resolve().parents[1]
+    geometric_only = "--geometric-only" in sys.argv[1:]
+    positional = [argument for argument in sys.argv[1:] if not argument.startswith("--")]
     library_path = (
-        Path(sys.argv[1]) if len(sys.argv) > 1 else root / "build/manual/bottleneck_core_c.dll"
+        Path(positional[0]) if positional else root / "build/manual/bottleneck_core_c.dll"
     )
     function = load_core(library_path)
-    configs = list(itertools.product(range(4), range(6), range(5), range(10), range(10), range(2)))
+    geometric_configs = [
+        (2, 0, 3, 0, 10, 0),
+        (2, 5, 3, 0, 10, 0),
+        (2, 4, 3, 0, 10, 0),
+        (2, 6, 3, 0, 10, 0),
+        (2, 7, 3, 9, 9, 1),
+    ]
+    configs = (
+        geometric_configs
+        if geometric_only
+        else list(itertools.product(range(4), range(6), range(5), range(10), range(10), range(2)))
+        + geometric_configs
+    )
     infinity = float("inf")
     cases = [
         (as_diagram([]), as_diagram([])),

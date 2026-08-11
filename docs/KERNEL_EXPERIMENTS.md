@@ -9,7 +9,7 @@
 - 语义目标：有限点、essential points、空图、重复点与对角点均对齐 GUDHI `bottleneck_distance(..., e=0)`。
 - reference variant：`sort_all + binary + dense_aos + on_demand + Kuhn + natural order`。
 - threshold contract：exact radius 必须返回 true；`nextafter(exact, 0)` 必须返回 false。
-- 默认优化配置：`sort_unique_clipped + quickselect + dense_aos + adaptive adjacency + adaptive matcher + degree ascending`。
+- 默认优化配置：`sort_unique_clipped + adaptive threshold + dense_aos + adaptive adjacency + adaptive matcher + degree ascending`；adaptive threshold 在交叉区选择 quickselect、geometric refinement 或严格的 no-cross shortcut。
 - AVX2 是运行时检测后的可选距离内核，不是二进制的强制 CPU 前提。
 
 ## 已接入实验开关
@@ -26,6 +26,8 @@
 | threshold | quickselect | 保留；避免全量候选排序，多数中大规模、稀疏和非对称数据胜出 |
 | threshold | incremental | 已验证负优化；逐 unique weight 激活事件过多 |
 | threshold | blocked incremental | 条件保留；按约 `sqrt(K)` 分块、命中块回滚重放，64 点事件数由 57,885 降至 3,556 |
+| threshold | geometric refinement | 保留；先用 warm geometric oracle 缩小区间，再只搜索环带内 exact candidates |
+| threshold | adaptive | 默认；按总规模、较小侧规模和 x-window pair 比例选择 quickselect/refinement，并识别无 cross 的 exact 上界 |
 | distance | dense AoS | 保留；当前稳定基线 |
 | distance | dense SoA | 正确；未稳定胜过 AoS |
 | distance | dense SoA AVX2 | 条件保留；运行时分派，较大或重复/稀疏输入有收益，小图可能被调用开销抵消 |
@@ -46,6 +48,7 @@
 | matcher | component + Kuhn | 正确；当前合成分布构图开销大于收益，保留负基线 |
 | matcher | Hopcroft–Karp | 正确；当前 small/medium-N 通常不如 greedy Kuhn |
 | matcher | greedy + Hopcroft–Karp | 正确；比冷 HK 好，但通常仍不如 greedy Kuhn |
+| matcher | geometric Hopcroft–Karp | 保留；KD range query、隐式 dummy 块、warm matching 和 active-count greedy，供 large-N/refinement 使用 |
 | matcher | mandatory flow | 条件保留；不显式建立投影 dummy 块，256 点极稀疏图胜出 |
 | matcher | adaptive | 保留；大规模阈值图先固定成本采样，极稀疏时用 mandatory flow，否则用 reusable greedy Kuhn |
 | vertex order | natural | reference；极小图可避免排序成本 |
@@ -62,6 +65,7 @@
 4. 物化扩展图时只访问可能存在的 cross/diagonal 边；数学上恒成立的 dummy 块直接写入，不再调用通用 edge predicate。
 5. quickselect 对候选区间做三路划分，避免为二分搜索先完整排序。
 6. adjacency 与 matcher 根据扩展图大小和阈值处采样密度分派。
+7. adaptive threshold 在总点数至少 128、较小侧至少 32 且 x-window 比例不低于 1% 时进入 geometric refinement；x-window 为零时直接返回 exact diagonal upper bound。
 
 ## 正确性验证
 
@@ -70,6 +74,8 @@
 - threshold decision：所有配置均验证 exact radius 成功、前一个可表示 `double` 失败。
 - GUDHI oracle：507 个输入 × 24,000 种配置，共 **12,168,000 次** `e=0` exact 比较，全部通过。
 - x-sweep 原型曾被 threshold contract 抓到端点窗口多接纳一条边；加入 birth 精确复核后重新通过完整 C++ 矩阵与 GUDHI 差分。
+- geometric backend 额外完成 300 组随机/重复点差分、ULP 数值边界和 64×64/32×256 dispatcher 差分；新增 5 个配置在 507 个 GUDHI 输入上完成 2,535 次 `e=0` exact 比较。
+- KD 查询框使用向外 `nextafter` 后再重算精确 `L∞`；防止空间索引的舍入窗口改变 strict threshold contract。
 
 ## 性能证据边界
 
@@ -93,6 +99,8 @@
 
 这些数字只比较本仓库 C++ 变体，且是合成输入上的探索性 best-of-zoo，不是 GUDHI Release 公平性能对照，也不能代表 Python 单次调用或批量吞吐。后续已增加多轮交错顺序的 median/p95 输出；AVX2、workspace 与相近配置仍需在更多机器复测。
 
+Large-N geometric/refinement 的实现、512–4096 点结果、dispatcher 交叉区和负优化记录见 [PHASE1_KERNEL_REPORT.md](PHASE1_KERNEL_REPORT.md)。代表性结果包括：uniform 512/1024/2048 点相对旧 adaptive 分别约 4.33×/6.57×/2.76×，clustered 2048 约 14.89×；4096 uniform adaptive 约 1.22 s。near-diagonal 会保留旧路径，separated 则由严格 no-cross shortcut 直接返回 exact 对角上界。
+
 另一次 200 对 uniform 单规模 microbenchmark 中，当前默认 dispatcher 相对本仓库 reference 的结果为：4 点 `3.20x`、8 点 `3.34x`、16 点 `7.86x`、32 点 `11.61x`、64 点 `19.93x`。这组倍数只说明默认配置相对朴素 reference 的内核改进，不是相对 GUDHI 的加速。
 
 额外工程实验：
@@ -102,8 +110,8 @@
 
 ## 下一批仍属内核的实验
 
-1. 在 128–1024 点和更多密度档位校准 adaptive matcher 的规模与密度阈值。
-2. 增加内存分配计数和峰值内存；继续压缩 ThresholdGraph 的 per-decision allocation。
+1. 增加内存分配计数和峰值内存；继续压缩 ThresholdGraph 与 geometric oracle 的 per-decision allocation。
+2. 为递归 augment 增加构造型深路径压力测试，并评估 iterative DFS/current-arc；正确性和栈安全优先于微小收益。
 3. 比较 Clang/GCC、平台原生 SIMD 多版本与 PGO；编译器结果和算法结果分开记录。
 4. 继续评估 pair/triple Hall、bucket/grid 邻域和更紧合法 bounds；负优化同样登记。
-5. 将 caller-provided solver workspace 扩展到 adjacency/candidate 缓冲区；native batch 与 caller-provided output 已进入内核。
+5. 将 caller-provided solver workspace 扩展到 adjacency/candidate/KD 缓冲区；native batch 与 caller-provided output 已进入内核。

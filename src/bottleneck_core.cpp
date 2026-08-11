@@ -1,5 +1,7 @@
 #include <bottleneck/core.hpp>
 
+#include "geometric_backend.hpp"
+
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -1491,30 +1493,89 @@ double finite_distance_incremental(const DistanceTable& table, const SolverConfi
   return upper_bound;
 }
 
+std::uint64_t x_window_pair_count(const PreparedDiagram& first,
+                                  const PreparedDiagram& second, double upper) {
+  if (first.finite_points().size() > second.finite_points().size()) {
+    return x_window_pair_count(second, first, upper);
+  }
+  std::uint64_t x_window_pairs = 0;
+  for (double birth : first.finite_births()) {
+    const double lower = std::nextafter(birth - upper,
+                                        -std::numeric_limits<double>::infinity());
+    const double higher = std::nextafter(birth + upper,
+                                         std::numeric_limits<double>::infinity());
+    const auto begin = std::lower_bound(second.sorted_finite_births().begin(),
+                                        second.sorted_finite_births().end(), lower);
+    const auto end = std::upper_bound(begin, second.sorted_finite_births().end(), higher);
+    x_window_pairs += static_cast<std::uint64_t>(end - begin);
+  }
+  return x_window_pairs;
+}
+
+bool prefer_geometric_refinement(const PreparedDiagram& first,
+                                 const PreparedDiagram& second,
+                                 std::uint64_t x_window_pairs) {
+  const std::size_t n = first.finite_points().size();
+  const std::size_t m = second.finite_points().size();
+  if ((std::min)(n, m) < 32) {
+    return false;
+  }
+  const double fraction = static_cast<double>(x_window_pairs) /
+                          (static_cast<double>(n) * static_cast<double>(m));
+  return fraction >= 0.01;
+}
+
 double finite_distance(const PreparedDiagram& first, const PreparedDiagram& second,
                        const SolverConfig& config, SolverStats* stats) {
+  ThresholdStrategy threshold = config.threshold;
+  if (threshold == ThresholdStrategy::adaptive) {
+    if (first.finite_points().size() + second.finite_points().size() >= 128) {
+      const double diagonal_upper =
+          (std::max)(first.max_finite_diagonal_distance(),
+                     second.max_finite_diagonal_distance());
+      const std::uint64_t x_window_pairs =
+          x_window_pair_count(first, second, diagonal_upper);
+      if (x_window_pairs == 0) {
+        return diagonal_upper;
+      }
+      threshold = prefer_geometric_refinement(first, second, x_window_pairs)
+                      ? ThresholdStrategy::geometric_refinement
+                      : ThresholdStrategy::quickselect;
+    } else {
+      threshold = ThresholdStrategy::quickselect;
+    }
+  }
+  if (threshold == ThresholdStrategy::geometric_refinement) {
+    return detail::geometric_refined_bottleneck_distance(first, second, stats);
+  }
+  const bool geometric_matcher = config.matcher == MatcherStrategy::geometric_hopcroft_karp;
   const bool use_x_sweep = config.adjacency == AdjacencyStrategy::x_sweep_csr ||
                            (config.adjacency == AdjacencyStrategy::adaptive &&
-                            first.finite_points().size() + second.finite_points().size() >= 128);
+                            first.finite_points().size() + second.finite_points().size() >= 128) ||
+                           geometric_matcher;
   if (use_x_sweep &&
       first.finite_points().size() > second.finite_points().size()) {
     return finite_distance(second, first, config, stats);
   }
-  const DistanceTable table(first, second, config.distance);
-  if (config.threshold == ThresholdStrategy::incremental ||
-      config.threshold == ThresholdStrategy::incremental_blocked) {
+  const DistanceTable table(first, second,
+                            geometric_matcher ? DistanceStrategy::recompute_soa : config.distance);
+  if (!geometric_matcher &&
+      (threshold == ThresholdStrategy::incremental ||
+       threshold == ThresholdStrategy::incremental_blocked)) {
     return finite_distance_incremental(table, config,
-                                       config.threshold == ThresholdStrategy::incremental_blocked,
+                                       threshold == ThresholdStrategy::incremental_blocked,
                                        stats);
   }
-  const bool quickselect = config.threshold == ThresholdStrategy::quickselect;
+  const bool quickselect = threshold == ThresholdStrategy::quickselect;
   auto radii = candidates(table, config.candidates, !quickselect, stats);
 
   const auto decision = [&](std::size_t index) {
     if (stats != nullptr) {
       ++stats->threshold_decisions;
     }
-    return finite_within(table, radii[index], config, stats);
+    return geometric_matcher
+               ? detail::geometric_bottleneck_within(first, second, radii[index], stats)
+               : finite_within(table, radii[index], config, stats);
   };
 
   const double lower_bound =
@@ -1538,7 +1599,9 @@ double finite_distance(const PreparedDiagram& first, const PreparedDiagram& seco
         if (stats != nullptr) {
           ++stats->threshold_decisions;
         }
-        feasible = finite_within(table, pivot, config, stats);
+        feasible = geometric_matcher
+                       ? detail::geometric_bottleneck_within(first, second, pivot, stats)
+                       : finite_within(table, pivot, config, stats);
       }
       if (feasible) {
         best = (std::min)(best, pivot);
@@ -1552,7 +1615,7 @@ double finite_distance(const PreparedDiagram& first, const PreparedDiagram& seco
   std::size_t lower = static_cast<std::size_t>(
       std::lower_bound(radii.begin(), radii.end(), lower_bound) - radii.begin());
   std::size_t upper = radii.size() - 1;
-  if (config.threshold == ThresholdStrategy::exponential && lower < upper) {
+  if (threshold == ThresholdStrategy::exponential && lower < upper) {
     if (decision(lower)) {
       return radii[lower];
     }
@@ -1569,7 +1632,7 @@ double finite_distance(const PreparedDiagram& first, const PreparedDiagram& seco
 
   while (lower < upper) {
     std::size_t middle = lower + (upper - lower) / 2;
-    if (config.threshold == ThresholdStrategy::gudhi_alpha && table.side_size() > 1) {
+    if (threshold == ThresholdStrategy::gudhi_alpha && table.side_size() > 1) {
       const double alpha = std::pow(static_cast<double>(table.side_size()), 1.0 / 5.0);
       middle = lower + static_cast<std::size_t>(
                            static_cast<double>(upper - lower - 1) / alpha);
@@ -1611,6 +1674,8 @@ PreparedDiagram::PreparedDiagram(const Diagram& diagram) {
   finite_births_.reserve(diagram.size());
   finite_deaths_.reserve(diagram.size());
   finite_diagonal_distances_.reserve(diagram.size());
+  finite_midpoints_.reserve(diagram.size());
+  finite_half_persistences_.reserve(diagram.size());
   for (const Point& point : diagram) {
     // Match GUDHI e=0 preprocessing semantics for the exact oracle.
     if (point.birth == infinity || point.death == negative_infinity) {
@@ -1629,6 +1694,12 @@ PreparedDiagram::PreparedDiagram(const Diagram& diagram) {
       const double distance = diagonal_distance(point);
       finite_diagonal_distances_.push_back(distance);
       max_finite_diagonal_distance_ = (std::max)(max_finite_diagonal_distance_, distance);
+      const double midpoint = std::midpoint(point.birth, point.death);
+      const double half_persistence = point.death - midpoint;
+      finite_midpoints_.push_back(midpoint);
+      finite_half_persistences_.push_back(half_persistence);
+      max_finite_half_persistence_ =
+          (std::max)(max_finite_half_persistence_, half_persistence);
     }
   }
   finite_birth_order_.resize(finite_births_.size());
@@ -1640,6 +1711,16 @@ PreparedDiagram::PreparedDiagram(const Diagram& diagram) {
   sorted_finite_births_.reserve(finite_birth_order_.size());
   for (std::size_t index : finite_birth_order_) {
     sorted_finite_births_.push_back(finite_births_[index]);
+  }
+  finite_midpoint_order_.resize(finite_midpoints_.size());
+  std::iota(finite_midpoint_order_.begin(), finite_midpoint_order_.end(), std::size_t{0});
+  std::stable_sort(finite_midpoint_order_.begin(), finite_midpoint_order_.end(),
+                   [&](std::size_t first, std::size_t second) {
+                     return finite_midpoints_[first] < finite_midpoints_[second];
+                   });
+  sorted_finite_midpoints_.reserve(finite_midpoint_order_.size());
+  for (std::size_t index : finite_midpoint_order_) {
+    sorted_finite_midpoints_.push_back(finite_midpoints_[index]);
   }
   std::sort(positive_infinite_births_.begin(), positive_infinite_births_.end());
   std::sort(negative_infinite_deaths_.begin(), negative_infinite_deaths_.end());
@@ -1653,6 +1734,26 @@ const std::vector<double>& PreparedDiagram::finite_deaths() const noexcept { ret
 
 const std::vector<double>& PreparedDiagram::finite_diagonal_distances() const noexcept {
   return finite_diagonal_distances_;
+}
+
+const std::vector<double>& PreparedDiagram::finite_midpoints() const noexcept {
+  return finite_midpoints_;
+}
+
+const std::vector<double>& PreparedDiagram::finite_half_persistences() const noexcept {
+  return finite_half_persistences_;
+}
+
+const std::vector<double>& PreparedDiagram::sorted_finite_midpoints() const noexcept {
+  return sorted_finite_midpoints_;
+}
+
+const std::vector<std::size_t>& PreparedDiagram::finite_midpoint_order() const noexcept {
+  return finite_midpoint_order_;
+}
+
+double PreparedDiagram::max_finite_half_persistence() const noexcept {
+  return max_finite_half_persistence_;
 }
 
 const std::vector<double>& PreparedDiagram::sorted_finite_births() const noexcept {
@@ -1703,6 +1804,12 @@ bool bottleneck_within(const PreparedDiagram& first, const PreparedDiagram& seco
   }
   if (stats != nullptr) {
     ++stats->threshold_decisions;
+  }
+  if (config.matcher == MatcherStrategy::geometric_hopcroft_karp) {
+    if (first.finite_points().size() > second.finite_points().size()) {
+      return detail::geometric_bottleneck_within(second, first, threshold, stats);
+    }
+    return detail::geometric_bottleneck_within(first, second, threshold, stats);
   }
   const bool use_x_sweep = config.adjacency == AdjacencyStrategy::x_sweep_csr ||
                            (config.adjacency == AdjacencyStrategy::adaptive &&
@@ -1764,6 +1871,10 @@ const char* to_string(ThresholdStrategy strategy) noexcept {
       return "incremental";
     case ThresholdStrategy::incremental_blocked:
       return "incremental_blocked";
+    case ThresholdStrategy::geometric_refinement:
+      return "geometric_refinement";
+    case ThresholdStrategy::adaptive:
+      return "adaptive";
   }
   return "unknown";
 }
@@ -1832,6 +1943,8 @@ const char* to_string(MatcherStrategy strategy) noexcept {
       return "hopcroft_karp";
     case MatcherStrategy::greedy_hopcroft_karp:
       return "greedy_hopcroft_karp";
+    case MatcherStrategy::geometric_hopcroft_karp:
+      return "geometric_hopcroft_karp";
   }
   return "unknown";
 }

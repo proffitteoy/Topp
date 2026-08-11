@@ -149,6 +149,124 @@ void randomized_differential() {
   }
 }
 
+void geometric_differential() {
+  std::mt19937_64 generator(0x6E0B0771EULL);
+  const SolverConfig reference{CandidateStrategy::sort_all, ThresholdStrategy::binary,
+                               DistanceStrategy::dense_aos, AdjacencyStrategy::on_demand,
+                               MatcherStrategy::kuhn, VertexOrder::natural};
+  const std::vector<SolverConfig> configs{
+      {CandidateStrategy::sort_unique_clipped, ThresholdStrategy::binary,
+       DistanceStrategy::recompute_soa, AdjacencyStrategy::on_demand,
+       MatcherStrategy::geometric_hopcroft_karp, VertexOrder::natural},
+      {CandidateStrategy::sort_unique_clipped, ThresholdStrategy::quickselect,
+       DistanceStrategy::recompute_soa, AdjacencyStrategy::on_demand,
+       MatcherStrategy::geometric_hopcroft_karp, VertexOrder::natural},
+      {CandidateStrategy::sort_unique_clipped, ThresholdStrategy::incremental_blocked,
+       DistanceStrategy::recompute_soa, AdjacencyStrategy::on_demand,
+       MatcherStrategy::geometric_hopcroft_karp, VertexOrder::natural},
+      {CandidateStrategy::sort_unique_clipped, ThresholdStrategy::geometric_refinement,
+       DistanceStrategy::recompute_soa, AdjacencyStrategy::on_demand,
+       MatcherStrategy::geometric_hopcroft_karp, VertexOrder::natural},
+      {},
+  };
+  std::uniform_int_distribution<int> size_distribution(0, 40);
+
+  for (int trial = 0; trial < 300; ++trial) {
+    Diagram first = random_diagram(
+        generator, static_cast<std::size_t>(size_distribution(generator)));
+    Diagram second = random_diagram(
+        generator, static_cast<std::size_t>(size_distribution(generator)));
+    if (trial % 7 == 0 && !first.empty()) {
+      first.push_back(first.front());
+    }
+    if (trial % 11 == 0 && !second.empty()) {
+      second.push_back(second.front());
+    }
+    const double expected = bottleneck::bottleneck_distance(first, second, reference);
+    const PreparedDiagram prepared_first(first);
+    const PreparedDiagram prepared_second(second);
+    for (const SolverConfig& config : configs) {
+      const double actual = bottleneck::bottleneck_distance(
+          prepared_first, prepared_second, config);
+      expect_equal(actual, expected, "geometric differential trial " + std::to_string(trial));
+      if (!bottleneck::bottleneck_within(
+              prepared_first, prepared_second, expected, config)) {
+        fail("geometric within rejected exact radius at trial " + std::to_string(trial));
+      }
+      if (expected > 0.0 && bottleneck::bottleneck_within(
+                                prepared_first, prepared_second,
+                                std::nextafter(expected, 0.0), config)) {
+        fail("geometric within accepted radius below exact result at trial " +
+             std::to_string(trial) + ", expected=" + std::to_string(expected) +
+             ", n=" + std::to_string(first.size()) + ", m=" +
+             std::to_string(second.size()) + ", threshold=" +
+             bottleneck::to_string(config.threshold));
+      }
+    }
+  }
+}
+
+void geometric_floating_boundaries() {
+  const SolverConfig reference{CandidateStrategy::sort_all, ThresholdStrategy::binary,
+                               DistanceStrategy::dense_aos, AdjacencyStrategy::on_demand,
+                               MatcherStrategy::kuhn, VertexOrder::natural};
+  const SolverConfig geometric{CandidateStrategy::sort_unique_clipped,
+                               ThresholdStrategy::geometric_refinement,
+                               DistanceStrategy::recompute_soa,
+                               AdjacencyStrategy::on_demand,
+                               MatcherStrategy::geometric_hopcroft_karp,
+                               VertexOrder::natural};
+  const double base = 1.0e12;
+  const Diagram first{{base, base + 1.0}, {-base, -base + 0.5}};
+  const Diagram second{{std::nextafter(base, std::numeric_limits<double>::infinity()),
+                        std::nextafter(base + 1.0, std::numeric_limits<double>::infinity())},
+                       {-base, -base + 0.5}};
+  const double expected = bottleneck::bottleneck_distance(first, second, reference);
+  expect_equal(bottleneck::bottleneck_distance(first, second, geometric), expected,
+               "geometric large-coordinate ulp boundary");
+  const PreparedDiagram prepared_first(first);
+  const PreparedDiagram prepared_second(second);
+  if (!bottleneck::bottleneck_within(prepared_first, prepared_second, expected, geometric)) {
+    fail("geometric large-coordinate exact threshold rejected");
+  }
+  if (bottleneck::bottleneck_within(prepared_first, prepared_second,
+                                    std::nextafter(expected, 0.0), geometric)) {
+    fail("geometric large-coordinate previous threshold accepted");
+  }
+}
+
+void adaptive_dispatcher_differential() {
+  std::mt19937_64 generator(0xADAF71EULL);
+  const SolverConfig reference{CandidateStrategy::sort_all, ThresholdStrategy::binary,
+                               DistanceStrategy::dense_aos, AdjacencyStrategy::on_demand,
+                               MatcherStrategy::kuhn, VertexOrder::natural};
+  const SolverConfig adaptive{};
+  for (int trial = 0; trial < 40; ++trial) {
+    const Diagram first = random_diagram(generator, 64);
+    const Diagram second = random_diagram(generator, 64);
+    expect_equal(bottleneck::bottleneck_distance(first, second, adaptive),
+                 bottleneck::bottleneck_distance(first, second, reference),
+                 "adaptive symmetric differential trial " + std::to_string(trial));
+  }
+  for (int trial = 0; trial < 20; ++trial) {
+    const Diagram first = random_diagram(generator, 32);
+    const Diagram second = random_diagram(generator, 256);
+    expect_equal(bottleneck::bottleneck_distance(first, second, adaptive),
+                 bottleneck::bottleneck_distance(first, second, reference),
+                 "adaptive asymmetric differential trial " + std::to_string(trial));
+  }
+  const Diagram separated_first{{-10.0, -9.0}, {-8.0, -5.0}};
+  Diagram separated_second;
+  separated_second.reserve(128);
+  for (int index = 0; index < 128; ++index) {
+    const double birth = 10.0 + static_cast<double>(index) / 128.0;
+    separated_second.push_back({birth, birth + 0.25});
+  }
+  expect_equal(bottleneck::bottleneck_distance(separated_first, separated_second, adaptive),
+               bottleneck::bottleneck_distance(separated_first, separated_second, reference),
+               "adaptive no-cross exact shortcut");
+}
+
 void batch_cases() {
   const PreparedDiagram query(Diagram{{0.0, 1.0}, {2.0, 3.5}});
   const std::vector<PreparedDiagram> targets{
@@ -181,6 +299,9 @@ void batch_cases() {
 int main() {
   deterministic_cases();
   randomized_differential();
+  geometric_differential();
+  geometric_floating_boundaries();
+  adaptive_dispatcher_differential();
   batch_cases();
   std::cout << "bottleneck_core_tests: all checks passed\n";
   return 0;
