@@ -46,7 +46,7 @@ std::uint64_t elapsed_ns(Clock::time_point start, Clock::time_point stop) {
       std::chrono::duration_cast<std::chrono::nanoseconds>(stop - start).count());
 }
 
-bool cpu_has_avx2() noexcept {
+[[maybe_unused]] bool cpu_has_avx2() noexcept {
 #if defined(BOTTLENECK_HAVE_WASSERSTEIN_AVX2) && defined(_MSC_VER) && defined(_M_X64)
   static const bool available = [] {
     int registers[4]{};
@@ -618,6 +618,7 @@ void generate_candidates(const PreparedDiagram& first,
       return;
     case WassersteinCandidateStrategy::topk_pricing_full_scan:
     case WassersteinCandidateStrategy::topk_pricing_sweep:
+    case WassersteinCandidateStrategy::topk_pricing_sweep_incremental:
       break;
     case WassersteinCandidateStrategy::adaptive:
       break;
@@ -1469,6 +1470,160 @@ bool build_matching_dual(const WeightedGraph& graph,
                  objective_scale;
 }
 
+MatchingResult sparse_cycle_reoptimize(const WeightedGraph& graph,
+                                       const MatchingResult& initial,
+                                       WassersteinStats* stats,
+                                       SparseDualState& dual) {
+  const int source = 0;
+  const int row_base = 1;
+  const int column_base = row_base + static_cast<int>(graph.rows);
+  const int sink = column_base + static_cast<int>(graph.columns);
+  std::vector<std::vector<ResidualEdge>> network(static_cast<std::size_t>(sink + 1));
+  std::vector<std::size_t> source_edges(graph.rows);
+  std::vector<std::size_t> sink_edges(graph.columns);
+  std::vector<std::size_t> matched_edges(
+      graph.rows, (std::numeric_limits<std::size_t>::max)());
+  for (std::size_t row = 0; row < graph.rows; ++row) {
+    source_edges[row] = network[static_cast<std::size_t>(source)].size();
+    add_residual_edge(network, source, row_base + static_cast<int>(row), 0);
+  }
+  for (std::size_t column = 0; column < graph.columns; ++column) {
+    const int column_node = column_base + static_cast<int>(column);
+    sink_edges[column] = network[static_cast<std::size_t>(column_node)].size();
+    add_residual_edge(network, column_node, sink, 0);
+  }
+  for (std::size_t row = 0; row < graph.rows; ++row) {
+    const int row_node = row_base + static_cast<int>(row);
+    const int matched_column = initial.row_to_column[row];
+    graph.for_each_edge(row, [&](std::size_t column, double saving) {
+      const std::size_t edge_index =
+          network[static_cast<std::size_t>(row_node)].size();
+      add_residual_edge(network, row_node,
+                        column_base + static_cast<int>(column),
+                        -static_cast<Weight>(saving));
+      if (matched_column >= 0 &&
+          column == static_cast<std::size_t>(matched_column)) {
+        matched_edges[row] = edge_index;
+      }
+    });
+  }
+  const std::size_t virtual_edge = network[static_cast<std::size_t>(sink)].size();
+  add_residual_edge(network, sink, source, 0,
+                    static_cast<int>((std::min)(graph.rows, graph.columns)));
+  const auto send_flow = [&](int from, std::size_t edge_index) {
+    ResidualEdge& edge = network[static_cast<std::size_t>(from)][edge_index];
+    --edge.capacity;
+    ++network[static_cast<std::size_t>(edge.destination)]
+             [static_cast<std::size_t>(edge.reverse)]
+                 .capacity;
+  };
+  for (std::size_t row = 0; row < graph.rows; ++row) {
+    const int column = initial.row_to_column[row];
+    if (column < 0 ||
+        matched_edges[row] == (std::numeric_limits<std::size_t>::max)()) {
+      continue;
+    }
+    send_flow(source, source_edges[row]);
+    send_flow(row_base + static_cast<int>(row), matched_edges[row]);
+    send_flow(column_base + column,
+              sink_edges[static_cast<std::size_t>(column)]);
+    send_flow(sink, virtual_edge);
+  }
+
+  const std::size_t node_count = network.size();
+  while (true) {
+    std::vector<Weight> distance(node_count, Weight{0});
+    std::vector<int> previous_node(node_count, -1);
+    std::vector<int> previous_edge(node_count, -1);
+    int updated = -1;
+    for (std::size_t pass = 0; pass < node_count; ++pass) {
+      updated = -1;
+      for (std::size_t node = 0; node < node_count; ++node) {
+        for (std::size_t edge_index = 0; edge_index < network[node].size();
+             ++edge_index) {
+          const ResidualEdge& edge = network[node][edge_index];
+          if (edge.capacity == 0) {
+            continue;
+          }
+          const Weight candidate = distance[node] + edge.cost;
+          const Weight scale =
+              (std::max)({Weight{1}, std::fabs(candidate),
+                          std::fabs(distance[static_cast<std::size_t>(
+                              edge.destination)])});
+          if (candidate + Weight{64} *
+                                  std::numeric_limits<Weight>::epsilon() * scale >=
+              distance[static_cast<std::size_t>(edge.destination)]) {
+            continue;
+          }
+          distance[static_cast<std::size_t>(edge.destination)] = candidate;
+          previous_node[static_cast<std::size_t>(edge.destination)] =
+              static_cast<int>(node);
+          previous_edge[static_cast<std::size_t>(edge.destination)] =
+              static_cast<int>(edge_index);
+          updated = edge.destination;
+        }
+      }
+      if (updated < 0) {
+        break;
+      }
+    }
+    if (updated < 0) {
+      break;
+    }
+    int cycle = updated;
+    for (std::size_t step = 0; step < node_count; ++step) {
+      cycle = previous_node[static_cast<std::size_t>(cycle)];
+      if (cycle < 0) {
+        break;
+      }
+    }
+    if (cycle < 0) {
+      break;
+    }
+    int flow = (std::numeric_limits<int>::max)();
+    int node = cycle;
+    do {
+      const int parent = previous_node[static_cast<std::size_t>(node)];
+      const int edge_index = previous_edge[static_cast<std::size_t>(node)];
+      flow = (std::min)(flow,
+                        network[static_cast<std::size_t>(parent)]
+                               [static_cast<std::size_t>(edge_index)]
+                                   .capacity);
+      node = parent;
+    } while (node != cycle);
+    node = cycle;
+    do {
+      const int parent = previous_node[static_cast<std::size_t>(node)];
+      const int edge_index = previous_edge[static_cast<std::size_t>(node)];
+      ResidualEdge& edge = network[static_cast<std::size_t>(parent)]
+                                  [static_cast<std::size_t>(edge_index)];
+      edge.capacity -= flow;
+      network[static_cast<std::size_t>(node)]
+             [static_cast<std::size_t>(edge.reverse)]
+                 .capacity += flow;
+      node = parent;
+    } while (node != cycle);
+    if (stats != nullptr) {
+      ++stats->augmentations;
+    }
+  }
+
+  MatchingResult result(graph.rows);
+  for (std::size_t row = 0; row < graph.rows; ++row) {
+    const int row_node = row_base + static_cast<int>(row);
+    for (const ResidualEdge& edge : network[static_cast<std::size_t>(row_node)]) {
+      if (edge.destination >= column_base && edge.destination < sink &&
+          edge.capacity == 0) {
+        result.row_to_column[row] = edge.destination - column_base;
+        result.saving -= edge.cost;
+        break;
+      }
+    }
+  }
+  dual.valid = build_matching_dual(graph, result, dual);
+  return result;
+}
+
 using TopEdgeKey = std::pair<Weight, std::int64_t>;
 using TopEdgeHeap =
     std::priority_queue<TopEdgeKey, std::vector<TopEdgeKey>,
@@ -1652,7 +1807,7 @@ MatchingResult solve_priced_restricted_graph(const WeightedGraph& graph,
 MatchingResult priced_topk_matching(const PreparedDiagram& first,
                                     const PreparedDiagram& second,
                                     WassersteinMetric metric, std::size_t top_k,
-                                    bool full_scan,
+                                    bool full_scan, bool incremental,
                                     WassersteinStats* stats,
                                     CandidateRows& candidates,
                                     WeightedGraph& graph) {
@@ -1663,6 +1818,7 @@ MatchingResult priced_topk_matching(const PreparedDiagram& first,
     stats->candidate_time_ns += elapsed_ns(candidate_start, Clock::now());
   }
   MatchingResult matching(first.finite_points().size());
+  bool initial_solve = true;
   while (true) {
     const auto graph_start = Clock::now();
     build_graph_into(candidates, WassersteinGraphStrategy::csr, stats, &first,
@@ -1673,7 +1829,12 @@ MatchingResult priced_topk_matching(const PreparedDiagram& first,
 
     SparseDualState dual;
     const auto solver_start = Clock::now();
-    matching = solve_priced_restricted_graph(graph, stats, dual);
+    if (incremental && !initial_solve) {
+      matching = sparse_cycle_reoptimize(graph, matching, stats, dual);
+    } else {
+      matching = solve_priced_restricted_graph(graph, stats, dual);
+    }
+    initial_solve = false;
     if (stats != nullptr) {
       stats->solver_time_ns += elapsed_ns(solver_start, Clock::now());
     }
@@ -2276,7 +2437,9 @@ double wasserstein_distance_impl(const PreparedDiagram& first,
   }
   if (config.candidates ==
           WassersteinCandidateStrategy::topk_pricing_full_scan ||
-      config.candidates == WassersteinCandidateStrategy::topk_pricing_sweep) {
+      config.candidates == WassersteinCandidateStrategy::topk_pricing_sweep ||
+      config.candidates ==
+          WassersteinCandidateStrategy::topk_pricing_sweep_incremental) {
     CandidateRows local_candidates(rows, columns);
     CandidateRows& candidates =
         workspace == nullptr ? local_candidates : workspace->candidates;
@@ -2286,6 +2449,8 @@ double wasserstein_distance_impl(const PreparedDiagram& first,
         first, second, config.metric, config.top_k,
         config.candidates ==
             WassersteinCandidateStrategy::topk_pricing_full_scan,
+        config.candidates ==
+            WassersteinCandidateStrategy::topk_pricing_sweep_incremental,
         stats, candidates, graph);
     if (stats != nullptr) {
       const std::uint64_t call_positive = stats->positive_edges - positive_before;
@@ -2533,6 +2698,8 @@ const char* to_string(WassersteinCandidateStrategy strategy) noexcept {
       return "topk_pricing_full_scan";
     case WassersteinCandidateStrategy::topk_pricing_sweep:
       return "topk_pricing_sweep";
+    case WassersteinCandidateStrategy::topk_pricing_sweep_incremental:
+      return "topk_pricing_sweep_incremental";
     case WassersteinCandidateStrategy::adaptive:
       return "adaptive";
   }

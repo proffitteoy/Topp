@@ -1,44 +1,81 @@
-# Persistence Diagram Distance 优化内核
+# Topp
 
-本仓库用于设计高性能 Persistence Diagram 距离内核。当前产品边界仍以独立 Python Bottleneck Distance 库为主；Wasserstein Distance 暂处于纯 C++ 内核优化实验阶段。GUDHI 是正确性 oracle、性能基线和可参考实现，不是本项目的产品边界。
+[English](README.en.md) · [使用说明](docs/USAGE.md) · [API](docs/API.md) · [开发指南](docs/DEVELOPMENT.md)
 
-## 当前状态
+Topp 是一个精简的 persistence diagram 距离包。它只专注于 exact Bottleneck 和两种 exact Wasserstein 距离，并由自适应 C++20 内核完成计算。
 
-C++ exact Bottleneck 内核第一阶段已覆盖 Small/Medium-N 算法 zoo、large-N 几何 matching、approximation-assisted exact refinement 和二维 dispatcher。Python 外壳、发行包名、公共 API、wheel 和构建后端暂不处理；没有修改外部 GUDHI 源码树。
+> **v0.1.0 内测版：** PyPI 会把 `0.1.0` 视为正式版本号，但本项目仍处于公开内测阶段；Python API 已冻结，Wasserstein 内核仍会继续优化。
 
-Wasserstein 已形成可正交配置的 exact 内核实验矩阵：blocked/AVX2/sweep candidates，多类 weighted graph，dense/sparse primal-dual，component/tiny-component，稳定 matching 重算，duplicate mass compression，以及 reusable batch workspace。当前证据、淘汰项和第二轮缺口见 [docs/WASSERSTEIN_KERNEL.md](docs/WASSERSTEIN_KERNEL.md)。
+## 特性
 
-- GUDHI 源码：`F:\GUDHI\gudhi-devel`
-- 当前源码与历史工作的核查结果：[docs/BASELINE.md](docs/BASELINE.md)
-- 独立 Python 库的产品边界：[docs/PROJECT_SCOPE.md](docs/PROJECT_SCOPE.md)
-- 完整优化路线：[docs/优化方向.md](docs/优化方向.md)
-- 内核实验、正确性矩阵与性能结论：[docs/KERNEL_EXPERIMENTS.md](docs/KERNEL_EXPERIMENTS.md)
-- Bottleneck 第一阶段报告：[docs/PHASE1_KERNEL_REPORT.md](docs/PHASE1_KERNEL_REPORT.md)
-- 历史 small-N 补丁副本：[patches/0001-gudhi-3.13-small-n-neighbors.patch](patches/0001-gudhi-3.13-small-n-neighbors.patch)
-- 基准测试约定：[benchmarks/README.md](benchmarks/README.md)
+- exact Bottleneck Distance（点间使用 `L∞`）；
+- exact `W1-L∞` 与 `W2-L2` Wasserstein Distance；
+- 不可变的 `PreparedDiagram`；
+- 原生 one-to-many 批量计算与可复用输出数组；
+- exact threshold decision：`bottleneck_within`；
+- Windows x64 的 CPython 3.10–3.14 wheels；
+- 运行时仅依赖 NumPy；AVX2 路径在运行时检测，不要求所有机器支持 AVX2。
 
-## 仓库结构
+## 安装
 
-```text
-benchmarks/  固定输入、基准脚本与结果格式说明
-docs/        产品边界、基线、设计和验证记录
-include/     C++ 内核接口
-src/         exact solver、dispatcher 与可选 AVX2 距离内核
-tests/       reference/threshold/GUDHI 差分测试
-scripts/     MSVC 普通与 LTO 实验构建脚本
-patches/     历史参考及实验补丁；不是最终发布形态
+```powershell
+py -m pip install topp
 ```
 
-## 工作边界
+首发 wheel 面向 Windows x64。其他平台可以从 sdist 构建，但需要 CMake 3.24+ 和 C++20 编译器。
 
-1. 首个算法目标是 exact Bottleneck Distance，并以 GUDHI `e=0` 做严格差分；近似算法作为后续独立能力。
-2. 公共 API 面向普通 Python/NumPy 用户，不暴露底层图结构、第三方几何类型或实验 dispatcher 细节。
-3. 单对、one-to-many 和 many-to-many 分层设计；批量 API 是正式、通用的产品能力。
-4. 所有优化先做结果差分，再做性能测试；内核加速、Python API 加速和批量吞吐分别报告。
-5. `F:\GUDHI\gudhi-devel` 当前仅作为外部 oracle/参考源码树，不在未确认实现方案前修改它。
-6. wheel、临时构建目录和原始基准结果默认不进入版本控制；可复现实验脚本、输入清单和汇总结论应进入版本控制。
+## 快速开始
 
-## 下一步
+```python
+import numpy as np
+import topp
 
-继续补充 Bottleneck 的峰值内存/分配计数、构造型深增广压力测试和跨编译器复测。prepared/native batch 和调用方输出缓冲区已进入内核。内核验证收口前不开始 Python 包装；只有需要公平源码基线时才构建 GUDHI，并保持其外部源码树现有文件不受影响。
-"# Tide" 
+x = np.array([[0.0, 1.0], [0.3, 0.8]])
+y = np.array([[0.0, 1.1], [0.4, 0.9]])
+
+print(topp.bottleneck_distance(x, y))
+print(topp.wasserstein_distance(x, y, order=2, internal_p=2))
+
+query = topp.prepare_diagram(x)
+print(topp.bottleneck_distances(query, [y, np.empty((0, 2))]))
+print(topp.bottleneck_within(query, y, 0.1))
+```
+
+完整示例见 [examples/basic.py](examples/basic.py)。
+
+## 支持的度量
+
+| 函数 | 语义 | 状态 |
+|---|---|---|
+| `bottleneck_distance` | exact Bottleneck，内部 `L∞` | 支持 |
+| `wasserstein_distance(..., order=1, internal_p=np.inf)` | exact `W1-L∞` | 支持 |
+| `wasserstein_distance(..., order=2, internal_p=2)` | exact `W2-L2` | 支持 |
+| 其他 Wasserstein 参数 | 数学上可能合法 | `NotImplementedError` |
+
+## 输入契约
+
+输入必须可转换为 `(n, 2)` 的 `float64` 数组。空图、对角点、重复点和规范 essential points 合法。NaN、`birth > death`、`birth=+inf`、`death=-inf` 及其他非法无穷组合会抛出 `ValueError`，不会被静默修正。
+
+详见 [API 文档](docs/API.md)。
+
+## 实验功能
+
+C++ 源码保留候选生成、图表示、matching、component 和 incremental pricing 等实验策略，供维护者复现与比较。它们不会暴露到普通 Python API，也不代表默认性能承诺。研究证据和历史方案见 [docs/research](docs/research/README.md)。
+
+## 开发
+
+```powershell
+py -m pip install -v .
+py -m pytest tests/python
+cmd.exe /d /c scripts\build-kernel.cmd
+```
+
+现有 `include/bottleneck/*` C++ 接口用于社区维护和内核实验，不承诺稳定 ABI。构建、测试和 benchmark 约定见 [开发指南](docs/DEVELOPMENT.md)。
+
+## 引用
+
+研究中使用 Topp 时，请引用仓库版本与发布标签。机器可读元数据见 [CITATION.cff](CITATION.cff)。
+
+## 许可
+
+Topp 使用 [MIT License](LICENSE)。GUDHI 仅作为测试 oracle、语义参考及历史补丁来源，不是运行时依赖；详情见 [第三方声明](THIRD_PARTY_NOTICES.md)。

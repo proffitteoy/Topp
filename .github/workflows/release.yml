@@ -1,0 +1,101 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  build-wheels:
+    runs-on: windows-2022
+    env:
+      CMAKE_GENERATOR: Visual Studio 17 2022
+      CMAKE_GENERATOR_PLATFORM: x64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install build tools
+        run: python -m pip install --upgrade pip cibuildwheel==4.2.0 build
+      - name: Build Windows wheels
+        env:
+          CIBW_BUILD: cp310-win_amd64 cp311-win_amd64 cp312-win_amd64 cp313-win_amd64 cp314-win_amd64
+          CIBW_TEST_REQUIRES: pytest
+          CIBW_TEST_COMMAND: >-
+            python -m pytest {project}/tests/python/test_api.py &&
+            python {project}/examples/basic.py
+        run: python -m cibuildwheel --output-dir wheelhouse
+      - name: Build sdist
+        run: python -m build --sdist --outdir wheelhouse
+      - uses: actions/upload-artifact@v4
+        with:
+          name: distributions
+          path: wheelhouse/*
+          if-no-files-found: error
+
+  publish-testpypi:
+    needs: build-wheels
+    runs-on: ubuntu-latest
+    environment: testpypi
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: distributions
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  verify-testpypi:
+    needs: publish-testpypi
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install from TestPyPI and smoke-test
+        run: |
+          python -m pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ topp==0.1.0
+          python examples/basic.py
+
+  publish-pypi:
+    needs: verify-testpypi
+    runs-on: ubuntu-latest
+    environment: pypi
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: distributions
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  github-release:
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: distributions
+          path: dist
+      - name: Create checksums
+        run: cd dist && sha256sum * > SHA256SUMS.txt
+      - name: Create public preview release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "${{ github.ref_name }}" dist/*
+          --title "Topp v0.1.0 内测版"
+          --notes-file .github/release-notes-v0.1.0.md
+          --prerelease
+          --verify-tag

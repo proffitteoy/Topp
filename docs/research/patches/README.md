@@ -1,4 +1,6 @@
-# 补丁目录
+# 历史补丁归档
+
+> 状态：historical / research-only。这里的补丁不进入 Topp 运行时，也不是当前实现基线。
 
 - `0001-gudhi-3.13-small-n-neighbors.patch`：历史 small-N 参考补丁，基线是 GUDHI 3.13.0。它不是新 Python 库的实现基线，也不是当前 `F:\GUDHI\gudhi-devel` 开发提交上已验证的补丁。
 

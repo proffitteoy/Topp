@@ -53,7 +53,7 @@
 
 当时还记录了两组距离二进制摘要一致、250 组随机差分无差异以及 8 项 GUDHI Bottleneck 测试通过。这些结果没有在当前仓库复现。
 
-历史 wheel 为 CPython 3.12 / Windows x64 专用，不能作为新 Python 库的发行产物，也不能作为其他 ABI、平台或当前开发分支的验证结果。补丁副本保存在 `patches/0001-gudhi-3.13-small-n-neighbors.patch`。
+历史 wheel 为 CPython 3.12 / Windows x64 专用，不能作为新 Python 库的发行产物，也不能作为其他 ABI、平台或当前开发分支的验证结果。补丁副本保存在 `docs/research/patches/0001-gudhi-3.13-small-n-neighbors.patch`。
 
 ## 后续方案需要明确的事项
 

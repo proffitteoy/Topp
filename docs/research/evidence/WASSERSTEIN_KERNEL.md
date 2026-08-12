@@ -4,7 +4,7 @@
 
 ## 范围
 
-本轮按 `docs/wasserstein第二阶段.md` 的方法重做 Wasserstein 优化：每个 candidate、graph representation、matcher 和 component 分支独立配置、独立差分、随机顺序 benchmark，再组合默认 adaptive kernel。
+本轮按 `../proposals/wasserstein第二阶段.md` 的方法重做 Wasserstein 优化：每个 candidate、graph representation、matcher 和 component 分支独立配置、独立差分、随机顺序 benchmark，再组合默认 adaptive kernel。
 
 当前仍然只处理 C++ exact 内核，不处理 Python 外壳、绑定、wheel 或 approximate auction。已覆盖 `W1-L∞` 和 `W2-L2`。
 
@@ -338,7 +338,7 @@ MSVC，128×128，5 repetitions × 7–9 randomized rounds：
 
 ## 尚未完成的第二轮
 
-以下仍是 `docs/wasserstein第二阶段.md` 的未完成项，不能把当前状态称为完整 Wasserstein 优化结束：
+以下仍是 `../proposals/wasserstein第二阶段.md` 的未完成项，不能把当前状态称为完整 Wasserstein 优化结束：
 
 1. 完整 JV column reduction transfer / augmenting-row reduction（独立矩形 dense SAP 和基础 row-reduction partial matching 已完成，但不冒充完整 JV）；
 2. incremental resolve 和 KD-tree pricing（top-k restricted solve、matching dual、full/sweep exact pricing 已完成并因端到端负优化暂不进入 adaptive）；

@@ -4,6 +4,8 @@ project(bottleneck_core VERSION 0.1.0 LANGUAGES CXX)
 
 option(BOTTLENECK_BUILD_TESTS "Build kernel correctness tests" ON)
 option(BOTTLENECK_BUILD_BENCHMARKS "Build kernel microbenchmarks" ON)
+option(BOTTLENECK_ENABLE_AVX2 "Build runtime-dispatched AVX2 kernels on MSVC x64" ON)
+option(TOPP_BUILD_PYTHON "Build the topp Python extension" OFF)
 
 add_library(bottleneck_core STATIC
     src/bottleneck_core.cpp
@@ -11,6 +13,7 @@ add_library(bottleneck_core STATIC
     src/wasserstein.cpp
 )
 add_library(bottleneck::core ALIAS bottleneck_core)
+set_target_properties(bottleneck_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 target_include_directories(bottleneck_core
     PUBLIC
@@ -18,13 +21,23 @@ target_include_directories(bottleneck_core
 )
 target_compile_features(bottleneck_core PUBLIC cxx_std_20)
 
-if(MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+if(BOTTLENECK_ENABLE_AVX2 AND MSVC AND CMAKE_SIZEOF_VOID_P EQUAL 8)
     target_sources(bottleneck_core PRIVATE src/distance_avx2.cpp src/wasserstein_avx2.cpp)
     set_source_files_properties(src/distance_avx2.cpp src/wasserstein_avx2.cpp
         PROPERTIES COMPILE_OPTIONS /arch:AVX2)
     target_compile_definitions(bottleneck_core PRIVATE
         BOTTLENECK_HAVE_AVX2_KERNEL=1
         BOTTLENECK_HAVE_WASSERSTEIN_AVX2=1)
+endif()
+
+if(TOPP_BUILD_PYTHON)
+    find_package(Python REQUIRED COMPONENTS Interpreter Development.Module)
+    find_package(pybind11 CONFIG REQUIRED)
+
+    pybind11_add_module(_core MODULE python/bindings.cpp)
+    target_link_libraries(_core PRIVATE bottleneck::core)
+    target_compile_features(_core PRIVATE cxx_std_20)
+    install(TARGETS _core LIBRARY DESTINATION topp RUNTIME DESTINATION topp)
 endif()
 
 if(MSVC)

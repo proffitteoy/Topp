@@ -4,14 +4,23 @@
 /artifacts/
 /benchmarks/results/
 /*.obj
+/_skbuild/
+/dist/
+/wheelhouse/
+/site/
+/.coverage
+/coverage.xml
+/htmlcov/
 
 # Python environments and caches
-/.venv/
+/.venv*/
 /.pytest_cache/
 **/__pycache__/
 *.py[cod]
 *.egg-info/
 *.whl
+.nox/
+.tox/
 
 # IDE and OS metadata
 /.vs/

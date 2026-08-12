@@ -30,7 +30,7 @@ namespace {
 
 constexpr int unmatched = -1;
 
-bool cpu_has_avx2() noexcept {
+[[maybe_unused]] bool cpu_has_avx2() noexcept {
 #if defined(BOTTLENECK_HAVE_AVX2_KERNEL) && defined(_MSC_VER) && defined(_M_X64)
   static const bool available = [] {
     int registers[4]{};

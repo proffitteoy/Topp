@@ -353,6 +353,26 @@ std::vector<WassersteinConfig> experiment_configs(WassersteinMetric metric) {
        WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
        WassersteinComponentStrategy::none, WassersteinWarmStart::none,
        WassersteinDuplicateStrategy::none, 32},
+      {metric, WassersteinCandidateStrategy::topk_pricing_sweep_incremental,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 2},
+      {metric, WassersteinCandidateStrategy::topk_pricing_sweep_incremental,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 4},
+      {metric, WassersteinCandidateStrategy::topk_pricing_sweep_incremental,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 8},
+      {metric, WassersteinCandidateStrategy::topk_pricing_sweep_incremental,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 16},
+      {metric, WassersteinCandidateStrategy::topk_pricing_sweep_incremental,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 32},
       {metric, WassersteinCandidateStrategy::adaptive,
        WassersteinGraphStrategy::adaptive,
        WassersteinMatcherStrategy::adaptive,
@@ -427,7 +447,9 @@ void variant_differential() {
             (config.candidates ==
                  WassersteinCandidateStrategy::topk_pricing_full_scan ||
              config.candidates ==
-                 WassersteinCandidateStrategy::topk_pricing_sweep)) {
+                 WassersteinCandidateStrategy::topk_pricing_sweep ||
+             config.candidates == WassersteinCandidateStrategy::
+                                      topk_pricing_sweep_incremental)) {
           std::cerr << "top-k diagnostic: rounds=" << stats.pricing_rounds
                     << ", priced=" << stats.priced_edges
                     << ", violations=" << stats.pricing_violations

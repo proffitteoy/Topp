@@ -1,0 +1,66 @@
+[build-system]
+requires = [
+  "scikit-build-core>=1.0,<2",
+  "pybind11>=3.0,<4",
+]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "topp"
+version = "0.1.0"
+description = "Exact persistence-diagram Bottleneck and Wasserstein distances"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
+authors = [{ name = "Topp contributors" }]
+dependencies = ["numpy>=1.23"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Programming Language :: C++",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Scientific/Engineering :: Mathematics",
+]
+
+[project.urls]
+Homepage = "https://github.com/proffitteoy/Topp"
+Repository = "https://github.com/proffitteoy/Topp"
+Issues = "https://github.com/proffitteoy/Topp/issues"
+Changelog = "https://github.com/proffitteoy/Topp/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+test = ["pytest>=8", "gudhi==3.13.0", "POT==0.9.7.post1"]
+
+[tool.scikit-build]
+cmake.version = ">=3.24"
+cmake.args = [
+  "-DTOPP_BUILD_PYTHON=ON",
+  "-DBOTTLENECK_BUILD_TESTS=OFF",
+  "-DBOTTLENECK_BUILD_BENCHMARKS=OFF",
+]
+wheel.packages = ["python/topp"]
+sdist.include = [
+  "CMakeLists.txt",
+  "include/bottleneck/*.hpp",
+  "src/*.cpp",
+  "src/*.hpp",
+  "python/**",
+  "tests/python/**",
+  "examples/**",
+  "docs/**",
+  "LICENSE",
+  "THIRD_PARTY_NOTICES.md",
+  "CHANGELOG.md",
+  "CITATION.cff",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/python"]
+addopts = "-ra"
+markers = ["oracle: requires optional pinned external oracle packages"]

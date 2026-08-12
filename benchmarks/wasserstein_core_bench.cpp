@@ -342,6 +342,31 @@ std::vector<NamedConfig> experiment_configs(WassersteinMetric metric) {
         WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
         WassersteinComponentStrategy::none, WassersteinWarmStart::none,
         bottleneck::WassersteinDuplicateStrategy::none, 32}},
+      {"priced_incremental_topk2",
+       {metric, WassersteinCandidateStrategy::topk_pricing_sweep_incremental,
+        WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+        WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+        bottleneck::WassersteinDuplicateStrategy::none, 2}},
+      {"priced_incremental_topk4",
+       {metric, WassersteinCandidateStrategy::topk_pricing_sweep_incremental,
+        WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+        WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+        bottleneck::WassersteinDuplicateStrategy::none, 4}},
+      {"priced_incremental_topk8",
+       {metric, WassersteinCandidateStrategy::topk_pricing_sweep_incremental,
+        WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+        WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+        bottleneck::WassersteinDuplicateStrategy::none, 8}},
+      {"priced_incremental_topk16",
+       {metric, WassersteinCandidateStrategy::topk_pricing_sweep_incremental,
+        WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+        WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+        bottleneck::WassersteinDuplicateStrategy::none, 16}},
+      {"priced_incremental_topk32",
+       {metric, WassersteinCandidateStrategy::topk_pricing_sweep_incremental,
+        WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+        WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+        bottleneck::WassersteinDuplicateStrategy::none, 32}},
       {"adaptive_no_duplicates",
        {metric, WassersteinCandidateStrategy::adaptive,
         WassersteinGraphStrategy::adaptive, WassersteinMatcherStrategy::adaptive,
@@ -388,7 +413,9 @@ bool should_run(const NamedConfig& named, std::size_t rows, std::size_t columns,
   const std::size_t maximum = (std::max)(rows, columns);
   if (named.config.candidates ==
           WassersteinCandidateStrategy::topk_pricing_full_scan ||
-      named.config.candidates == WassersteinCandidateStrategy::topk_pricing_sweep) {
+      named.config.candidates == WassersteinCandidateStrategy::topk_pricing_sweep ||
+      named.config.candidates ==
+          WassersteinCandidateStrategy::topk_pricing_sweep_incremental) {
     return true;
   }
   const bool explicitly_dense =
@@ -430,7 +457,8 @@ int main(int argc, char** argv) {
       std::any_of(options.experiments.begin(), options.experiments.end(),
                   [](const std::string& name) {
                     return name.starts_with("priced_topk") ||
-                           name.starts_with("priced_sweep_topk");
+                           name.starts_with("priced_sweep_topk") ||
+                           name.starts_with("priced_incremental_topk");
                   });
   std::mt19937_64 generator(0xD5A0A11ULL);
   const std::vector<std::size_t> all_sizes{8,   16,   32,   64,   128, 256,

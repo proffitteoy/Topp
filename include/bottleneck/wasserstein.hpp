@@ -8,7 +8,7 @@
 namespace bottleneck {
 
 // The first optimized kernels intentionally cover the two exact metrics from
-// Phase 2 of docs/wasserstein优化方案.md. More metrics can be added without
+// Phase 2 of docs/research/proposals/wasserstein优化方案.md. More metrics can be added without
 // changing the distance entry points.
 enum class WassersteinMetric {
   w1_linf,
@@ -24,6 +24,7 @@ enum class WassersteinCandidateStrategy {
   sweep_two_pointer,
   topk_pricing_full_scan,
   topk_pricing_sweep,
+  topk_pricing_sweep_incremental,
   adaptive,
 };
 
