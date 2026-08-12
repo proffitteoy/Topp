@@ -1,6 +1,6 @@
 # Topp 开发指南
 
-[English](DEVELOPMENT.en.md) · [贡献指南](../CONTRIBUTING.md)
+[English](DEVELOPMENT.en.md) · [贡献指南](https://github.com/proffitteoy/Topp/blob/main/CONTRIBUTING.md)
 
 普通用户只使用 Python API。`include/bottleneck/*`、实验策略和 benchmark 面向社区维护者，不承诺稳定 C++ ABI。
 
@@ -39,7 +39,7 @@ ctest --test-dir build\scalar --output-on-failure
 
 ## Benchmark
 
-命令和公平比较规则见 [benchmarks/README.md](../benchmarks/README.md)。原始输出放在已忽略的 `benchmarks/results/`；只提交可复现命令、固定输入/种子和带边界的汇总结论。
+命令和公平比较规则见 [benchmarks/README.md](https://github.com/proffitteoy/Topp/blob/main/benchmarks/README.md)。原始输出放在已忽略的 `benchmarks/results/`；只提交可复现命令、固定输入/种子和带边界的汇总结论。
 
 实验策略必须先通过 reference/oracle 差分，再比较随机顺序 median/p95。失败路线保留结论，不进入默认 dispatcher。
 

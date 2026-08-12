@@ -6,7 +6,7 @@ All public objects are imported from `topp`. `topp._core` is private and has no 
 
 ## Input type
 
-`DiagramLike = ArrayLike | PreparedDiagram`. Array-like inputs must convert to a `float64` array of shape `(n, 2)`. See [Usage](USAGE.en.md#input-format) for strict validation rules.
+`DiagramLike = ArrayLike | PreparedDiagram`. Array-like inputs must convert to a `float64` array of shape `(n, 2)`. See [Inputs, duplicates, and essential points](guide/input-semantics.md) for strict validation rules.
 
 ## `PreparedDiagram`
 

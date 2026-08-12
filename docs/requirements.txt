@@ -1,0 +1,4 @@
+sphinx>=8.2,<9
+furo>=2024.8.6,<2027
+myst-parser>=4,<5
+sphinx-copybutton>=0.5,<1

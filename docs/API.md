@@ -6,7 +6,7 @@
 
 ## 输入类型
 
-`DiagramLike = ArrayLike | PreparedDiagram`。array-like 必须能转换为 shape `(n, 2)` 的 `float64` 数组。严格输入规则见 [使用说明](USAGE.md#输入格式)。
+`DiagramLike = ArrayLike | PreparedDiagram`。array-like 必须能转换为 shape `(n, 2)` 的 `float64` 数组。严格输入规则见[使用说明](USAGE.md)。
 
 ## `PreparedDiagram`
 

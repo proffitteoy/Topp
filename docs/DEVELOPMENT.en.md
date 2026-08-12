@@ -1,6 +1,6 @@
 # Developing Topp
 
-[中文](DEVELOPMENT.md) · [Contributing](../CONTRIBUTING.en.md)
+[中文](DEVELOPMENT.md) · [Contributing](https://github.com/proffitteoy/Topp/blob/main/CONTRIBUTING.en.md)
 
 Regular users consume only the Python API. `include/bottleneck/*`, experimental strategies, and benchmarks support community maintenance and do not promise a stable C++ ABI.
 
@@ -39,7 +39,7 @@ ctest --test-dir build\scalar --output-on-failure
 
 ## Benchmarks
 
-See [benchmarks/README.md](../benchmarks/README.md) for commands and fair-comparison rules. Raw output belongs in ignored `benchmarks/results/`; commit only reproducible commands, fixed inputs/seeds, and bounded conclusions.
+See [benchmarks/README.md](https://github.com/proffitteoy/Topp/blob/main/benchmarks/README.md) for commands and fair-comparison rules. Raw output belongs in ignored `benchmarks/results/`; commit only reproducible commands, fixed inputs/seeds, and bounded conclusions.
 
 Experimental strategies must pass reference/oracle differentials before randomized-order median/p95 comparisons. Keep conclusions for failed routes and do not add them to the default dispatcher.
 

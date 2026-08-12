@@ -1,6 +1,6 @@
 # Using Topp
 
-[中文](USAGE.md) · [README](../README.en.md) · [API](API.en.md) · [Mathematics](MATHEMATICS.en.md)
+[中文](USAGE.md) · [Repository README](https://github.com/proffitteoy/Topp/blob/main/README.en.md) · [API](API.en.md) · [Mathematics](MATHEMATICS.en.md)
 
 ## Installation
 
