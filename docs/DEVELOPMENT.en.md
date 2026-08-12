@@ -32,7 +32,7 @@ build\manual\wasserstein_core_tests.exe
 Disable AVX2 translation units to validate the scalar build:
 
 ```powershell
-cmake -S . -B build\scalar -G Ninja -DBOTTLENECK_ENABLE_AVX2=OFF
+cmake -S . -B build\scalar -G Ninja -DCMAKE_BUILD_TYPE=Release -DBOTTLENECK_ENABLE_AVX2=OFF
 cmake --build build\scalar
 ctest --test-dir build\scalar --output-on-failure
 ```

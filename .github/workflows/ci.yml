@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ilammy/msvc-dev-cmd@v1
       - name: Configure
-        run: cmake -S . -B build/ci -G Ninja -DBOTTLENECK_BUILD_BENCHMARKS=OFF
+        run: cmake -S . -B build/ci -G Ninja -DCMAKE_BUILD_TYPE=Release -DBOTTLENECK_BUILD_BENCHMARKS=OFF
       - name: Build
         run: cmake --build build/ci
       - name: Test
@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ilammy/msvc-dev-cmd@v1
       - name: Configure without AVX2
-        run: cmake -S . -B build/scalar -G Ninja -DBOTTLENECK_ENABLE_AVX2=OFF -DBOTTLENECK_BUILD_BENCHMARKS=OFF
+        run: cmake -S . -B build/scalar -G Ninja -DCMAKE_BUILD_TYPE=Release -DBOTTLENECK_ENABLE_AVX2=OFF -DBOTTLENECK_BUILD_BENCHMARKS=OFF
       - name: Build
         run: cmake --build build/scalar
       - name: Test
