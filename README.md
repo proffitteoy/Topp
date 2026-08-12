@@ -1,8 +1,26 @@
-# Topp
+<p align="center">
+  <img src="https://raw.githubusercontent.com/proffitteoy/Topp/main/assets/topp-mark.svg" width="96" alt="Topp 标志">
+</p>
 
-[English](README.en.md) · [使用说明](docs/USAGE.md) · [API](docs/API.md) · [开发指南](docs/DEVELOPMENT.md)
+<h1 align="center">Topp</h1>
 
-Topp 是一个精简的 persistence diagram 距离包。它只专注于 exact Bottleneck 和两种 exact Wasserstein 距离，并由自适应 C++20 内核完成计算。
+<p align="center">用于 persistence diagram 的 exact Bottleneck 与 Wasserstein 距离。</p>
+
+<p align="center">
+  <a href="https://github.com/proffitteoy/Topp/actions/workflows/ci.yml"><img src="https://github.com/proffitteoy/Topp/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="https://pypi.org/project/topp/"><img src="https://img.shields.io/pypi/v/topp" alt="PyPI version"></a>
+  <a href="https://pypi.org/project/topp/"><img src="https://img.shields.io/pypi/pyversions/topp?logo=python&logoColor=white" alt="Python versions"></a>
+</p>
+
+<p align="center">
+  <a href="README.en.md">English</a> ·
+  <a href="docs/USAGE.md">使用说明</a> ·
+  <a href="docs/API.md">API</a> ·
+  <a href="docs/DEVELOPMENT.md">开发指南</a> ·
+  <a href="CHANGELOG.md">更新日志</a>
+</p>
+
+Topp 提供小型 Python API 和自适应 C++20 内核。对同一个 diagram 执行多次比较时，可预处理一次并直接调用原生批量接口。运行时仅依赖 NumPy，并包含类型信息。
 
 > **v0.1.0 内测版：** PyPI 会把 `0.1.0` 视为正式版本号，但本项目仍处于公开内测阶段；Python API 已冻结，Wasserstein 内核仍会继续优化。
 
@@ -10,11 +28,11 @@ Topp 是一个精简的 persistence diagram 距离包。它只专注于 exact Bo
 
 - exact Bottleneck Distance（点间使用 `L∞`）；
 - exact `W1-L∞` 与 `W2-L2` Wasserstein Distance；
-- 不可变的 `PreparedDiagram`；
-- 原生 one-to-many 批量计算与可复用输出数组；
-- exact threshold decision：`bottleneck_within`；
+- 不可变的 `PreparedDiagram` 和原生 one-to-many 计算；
+- 支持复用输出数组，以及 exact `bottleneck_within` 阈值判断；
+- 原生计算期间释放 GIL；
 - Windows x64 的 CPython 3.10–3.14 wheels；
-- 运行时仅依赖 NumPy；AVX2 路径在运行时检测，不要求所有机器支持 AVX2。
+- 运行时仅依赖 NumPy；AVX2 在运行时检测，不要求所有机器支持。
 
 ## 安装
 
@@ -42,6 +60,18 @@ print(topp.bottleneck_within(query, y, 0.1))
 ```
 
 完整示例见 [examples/basic.py](examples/basic.py)。
+
+### 批量比较并复用内存
+
+```python
+targets = [y, np.empty((0, 2))]
+out = np.empty(len(targets), dtype=np.float64)
+
+query = topp.prepare_diagram(x)
+topp.wasserstein_distances(
+    query, targets, order=2, internal_p=2, out=out
+)
+```
 
 ## 支持的度量
 
@@ -71,6 +101,17 @@ cmd.exe /d /c scripts\build-kernel.cmd
 ```
 
 现有 `include/bottleneck/*` C++ 接口用于社区维护和内核实验，不承诺稳定 ABI。构建、测试和 benchmark 约定见 [开发指南](docs/DEVELOPMENT.md)。
+
+## 项目导航
+
+| 入口 | 内容 |
+|---|---|
+| [使用说明](docs/USAGE.md) | 安装、单次与批量调用、输出数组和异常处理 |
+| [API 文档](docs/API.md) | 完整公开 API 与输入契约 |
+| [开发指南](docs/DEVELOPMENT.md) | 本地构建、测试与 benchmark |
+| [贡献指南](CONTRIBUTING.md) | 正确性和性能修改的提交要求 |
+| [研究记录](docs/research/README.md) | 内核实验、差分证据与历史方案 |
+| [更新日志](CHANGELOG.md) | 版本能力与已知限制 |
 
 ## 引用
 

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-labelledby="title desc">
+  <title id="title">Topp mark</title>
+  <desc id="desc">A persistence diagram above its diagonal</desc>
+  <rect x="12" y="12" width="104" height="104" rx="18" fill="#ffffff" stroke="#d0d7de" stroke-width="2"/>
+  <path d="M30 98L98 30" fill="none" stroke="#8c959f" stroke-width="2"/>
+  <g fill="#0969da">
+    <circle cx="39" cy="74" r="5"/>
+    <circle cx="57" cy="49" r="5"/>
+    <circle cx="76" cy="55" r="5"/>
+    <circle cx="91" cy="36" r="5"/>
+  </g>
+</svg>

@@ -53,6 +53,7 @@ sdist.include = [
   "python/**",
   "tests/python/**",
   "examples/**",
+  "assets/**",
   "docs/**",
   "LICENSE",
   "THIRD_PARTY_NOTICES.md",
