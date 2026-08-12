@@ -50,6 +50,7 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
+          attestations: false
 
   verify-testpypi:
     needs: publish-testpypi
@@ -78,6 +79,8 @@ jobs:
           name: distributions
           path: dist
       - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          attestations: false
 
   github-release:
     needs: publish-pypi
