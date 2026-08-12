@@ -29,7 +29,8 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/proffitteoy/Topp"
+Homepage = "https://proffitteoy.github.io/Topp/"
+Documentation = "https://proffitteoy.github.io/Topp/"
 Repository = "https://github.com/proffitteoy/Topp"
 Issues = "https://github.com/proffitteoy/Topp/issues"
 Changelog = "https://github.com/proffitteoy/Topp/blob/main/CHANGELOG.md"

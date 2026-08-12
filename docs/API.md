@@ -1,6 +1,6 @@
 # Topp Python API
 
-[English](API.en.md) · [使用说明](USAGE.md)
+[English](API.en.md) · [使用说明](USAGE.md) · [数学约定](MATHEMATICS.md)
 
 所有公开对象都从 `topp` 顶层导入。`topp._core` 是私有实现，不受兼容性承诺保护。
 

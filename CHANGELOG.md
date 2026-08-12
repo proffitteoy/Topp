@@ -17,7 +17,7 @@ Public preview release.
 
 ### Known limitations
 
-- Only Windows x64 wheels are published initially; other platforms require an sdist build.
+- Only Windows x64 wheels are published initially; Linux and macOS source builds are not yet covered by CI.
 - Generic Wasserstein `(order, internal_p)` combinations are not implemented.
 - The C++ interface and ABI are intended for maintenance and experimentation and are not stability commitments.
 - Wasserstein optimization is ongoing.

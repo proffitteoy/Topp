@@ -14,17 +14,30 @@
 
 <p align="center">
   <a href="README.md">中文</a> ·
+  <a href="https://proffitteoy.github.io/Topp/">Website</a> ·
   <a href="docs/USAGE.en.md">Usage</a> ·
   <a href="docs/API.en.md">API</a> ·
+  <a href="docs/MATHEMATICS.en.md">Mathematics</a> ·
   <a href="docs/DEVELOPMENT.en.md">Development</a> ·
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
-Topp provides a small Python API backed by an adaptive C++20 kernel. Prepare a diagram once and use native batch operations when comparing it with many candidates. NumPy is the only runtime dependency, and inline type information is included.
+Topp is for users who **already have persistence diagrams and need strict, repeated distance comparisons in Python**. It provides a small Python API backed by an adaptive C++20 kernel. Prepare a diagram once and use native batch operations when comparing it with many candidates.
 
 > **v0.1.0 public preview:** PyPI treats `0.1.0` as a final version number, while this project remains in public testing. The Python API is frozen; the Wasserstein kernel will continue to improve.
 
-## Features
+## When Topp fits
+
+Choose Topp when you:
+
+- already obtain persistence diagrams from GUDHI, Ripser, or another pipeline and only need distances between them;
+- need exact Bottleneck, `W1-L∞`, or `W2-L2` semantics without an approximation parameter changing threshold decisions;
+- repeatedly compare one query with many candidates and want to reuse preprocessing, workspace, or output memory;
+- want a typed Python API with NumPy as its only runtime dependency.
+
+Topp **does not compute persistence diagrams** and does not provide arbitrary `(order, internal_p)` pairs, approximate/GPU distances, or a complete TDA workflow. Use a broader TDA library when those capabilities are required. No controlled cross-library benchmark has been published yet, so Topp does not claim an end-to-end speed advantage over GUDHI, Hera, or Persim.
+
+## Provided capabilities
 
 - exact Bottleneck distance with the internal `L∞` metric;
 - exact `W1-L∞` and `W2-L2` Wasserstein distances;
@@ -40,7 +53,7 @@ Topp provides a small Python API backed by an adaptive C++20 kernel. Prepare a d
 py -m pip install topp
 ```
 
-The initial wheels target Windows x64. Building the sdist on other platforms requires CMake 3.24+ and a C++20 compiler.
+Prebuilt wheels currently target Windows x64 only. Source builds may work elsewhere with CMake 3.24+ and a C++20 compiler, but Linux and macOS are not yet covered by CI and are not validated platforms for `v0.1.0`.
 
 ## Quick start
 
@@ -86,7 +99,7 @@ topp.wasserstein_distances(
 
 Inputs must convert to a `float64` array of shape `(n, 2)`. Empty diagrams, diagonal points, duplicates, and canonical essential points are valid. NaN, `birth > death`, `birth=+inf`, `death=-inf`, and other invalid infinity forms raise `ValueError` and are never silently repaired.
 
-See the [API reference](docs/API.en.md) for details.
+See [Mathematical conventions](docs/MATHEMATICS.en.md) for distance definitions, diagonal costs, duplicates, and essential points. See the [API reference](docs/API.en.md) for the call contract.
 
 ## Experimental features
 
@@ -106,8 +119,10 @@ The existing `include/bottleneck/*` C++ interface supports community maintenance
 
 | Entry | Contents |
 |---|---|
+| [Project website](https://proffitteoy.github.io/Topp/) | Use cases, installation, API, and mathematical overview |
 | [Usage guide](docs/USAGE.en.md) | Installation, scalar and batch calls, output arrays, and errors |
 | [API reference](docs/API.en.md) | Complete public API and input contract |
+| [Mathematical conventions](docs/MATHEMATICS.en.md) | Distances, diagonal costs, duplicates, and essential points |
 | [Development guide](docs/DEVELOPMENT.en.md) | Local builds, tests, and benchmarks |
 | [Contributing](CONTRIBUTING.en.md) | Requirements for correctness and performance changes |
 | [Research notes](docs/research/README.md) | Kernel experiments, differential evidence, and historical proposals |

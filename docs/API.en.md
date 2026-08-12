@@ -1,6 +1,6 @@
 # Topp Python API
 
-[中文](API.md) · [Usage](USAGE.en.md)
+[中文](API.md) · [Usage](USAGE.en.md) · [Mathematics](MATHEMATICS.en.md)
 
 All public objects are imported from `topp`. `topp._core` is private and has no compatibility guarantee.
 

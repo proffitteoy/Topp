@@ -1,6 +1,6 @@
 # Topp 使用说明
 
-[English](USAGE.en.md) · [README](../README.md) · [API](API.md)
+[English](USAGE.en.md) · [README](../README.md) · [API](API.md) · [数学约定](MATHEMATICS.md)
 
 ## 安装
 
@@ -8,11 +8,13 @@
 py -m pip install topp
 ```
 
-首发预编译 wheel 支持 Windows x64 与 CPython 3.10–3.14。从源码安装需要 CMake 3.24+ 和 C++20 编译器：
+预编译 wheel 支持 Windows x64 与 CPython 3.10–3.14。从源码安装需要 CMake 3.24+ 和 C++20 编译器：
 
 ```powershell
 py -m pip install -v .
 ```
+
+Linux 和 macOS 尚未纳入 CI；从 sdist 构建在这些平台上属于未验证路径。
 
 ## 单对距离
 

@@ -1,6 +1,6 @@
 # Using Topp
 
-[中文](USAGE.md) · [README](../README.en.md) · [API](API.en.md)
+[中文](USAGE.md) · [README](../README.en.md) · [API](API.en.md) · [Mathematics](MATHEMATICS.en.md)
 
 ## Installation
 
@@ -8,11 +8,13 @@
 py -m pip install topp
 ```
 
-Initial binary wheels support Windows x64 and CPython 3.10–3.14. Installing from source requires CMake 3.24+ and a C++20 compiler:
+Binary wheels support Windows x64 and CPython 3.10–3.14. Installing from source requires CMake 3.24+ and a C++20 compiler:
 
 ```powershell
 py -m pip install -v .
 ```
+
+Linux and macOS are not yet covered by CI; sdist builds on those platforms are unvalidated.
 
 ## Pairwise distances
 
