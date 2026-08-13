@@ -27,6 +27,7 @@ build\manual\bottleneck_core_bench.exe --repetitions 100
 build\manual\bottleneck_grid_bench.exe --repetitions 20 --rounds 5
 build\manual\bottleneck_batch_bench.exe --repetitions 5
 build\manual\bottleneck_large_bench.exe --repetitions 3
+build\manual\bottleneck_multiplicity_bench.exe --repetitions 3 --rounds 7
 build\manual\wasserstein_core_bench.exe --repetitions 5 --rounds 7 --max-size 128
 build\manual\wasserstein_batch_bench.exe --repetitions 5 --rounds 21
 ```
@@ -35,8 +36,14 @@ build\manual\wasserstein_batch_bench.exe --repetitions 5 --rounds 21
 
 `bottleneck_large_bench` 覆盖 `32–4096` 点、稠密/稀疏/重复/分离分布和非对称输入，对比 geometric refinement、全候选 geometric matcher、默认 dispatcher 与旧 adaptive 路径。`--max-points N` 可限制交叉区实验；当前输出是固定种子多输入的均值，仍属于内核探索数据。
 
-`wasserstein_core_bench` 覆盖 uniform、near-diagonal、clustered、separated、duplicate-heavy、imbalanced、adversarial-dense、adversarial-sparse 的 `8–8192` 规模清单。配置按轮随机执行并报告 median/p95，同时拆分 prepare/candidate/graph/component/solver/pricing 时间，并记录 pricing rounds、priced/violated/materialized edges、max degree 与 peak graph bytes。可用 `--min-size`、`--max-size`、`--pattern`、`--metric`、`--repetitions` 和 `--rounds` 缩小实验矩阵；`--experiments priced_topk8,priced_sweep_topk8,adaptive` 可在同一进程中随机轮序配对多个指定配置，旧的单值 `--experiment` 仍兼容。超过 512 的普通分布只有在显式选择 priced 实验时才会开放，其他 dense baseline 继续跳过。
+`bottleneck_multiplicity_bench` 固定 raw N 并扫描 exact duplicate ratio，对比 geometric default、显式 multiplicity capacity flow、当前 adaptive router 和旧 quickselect。配置逐轮随机顺序，输出 median/p95、unique group 数、移除点数和 capacity edge 数；可用 `--min-duplicate-ratio` 与 `--max-points` 缩小 crossover 扫描。
+
+`wasserstein_core_bench` 覆盖 uniform、near-diagonal、clustered、separated、duplicate-heavy、imbalanced、adversarial-dense、adversarial-sparse 和 32×32 多分量专用输入的 `8–8192` 规模清单。配置按轮随机执行并报告 median/p95，同时拆分 prepare/candidate/graph/component/solver/pricing 时间，并记录 pricing rounds、priced/violated/materialized edges、max degree 与 peak graph bytes。可用 `--min-size`、`--max-size`、`--pattern`、`--metric`、`--repetitions` 和 `--rounds` 缩小实验矩阵；`--experiments priced_topk8,priced_sweep_topk8,priced_kdtree_topk8,priced_incremental_topk8,priced_persistent_topk8,adaptive` 可在同一进程中随机轮序配对 full-scan、sweep、KD-tree、matching-incremental、persistent-residual cycle-cancel 与默认配置，五档 top-k 名称均为 `2/4/8/16/32`。component 并行对照名为 `parallel_component_dense` / `parallel_component_sparse`；旧的单值 `--experiment` 仍兼容。超过 512 的普通分布只有在显式选择 priced 实验时才会开放，`multi_component` 只开放 component 专用配置，其他 dense baseline 继续跳过。
 
 `wasserstein_batch_bench` 比较 one-shot、手写 prepared loop、native caller-buffer、显式 reusable workspace 和 native allocated-vector。五种模式先预热，再逐轮随机执行并报告 median/p95；固定顺序的单次数字不能用于判断 batch/workspace 收益。
 
-生成的原始结果放入 `benchmarks/results/`，该目录默认忽略。可复现脚本、脱敏固定输入或输入清单以及最终汇总应纳入版本控制。
+## 结果归档
+
+- 原始逐轮计时、临时诊断数据、探针和本地辅助脚本统一放入 `benchmarks/results/`；该目录默认忽略，不纳入版本控制。
+- 可长期复现的正式 benchmark 应整理为 `benchmarks/` 下的源码；面向用户的最终汇总放入正式文档，并只保留理解表格所需的测试口径。
+- 不要在仓库根目录或文档目录散放 JSON、NPZ、对象文件、可执行文件及其他实验中间产物。

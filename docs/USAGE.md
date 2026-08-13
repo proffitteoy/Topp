@@ -1,6 +1,6 @@
 # Topp 使用说明
 
-[English](USAGE.en.md) · [仓库 README](https://github.com/proffitteoy/Topp/blob/main/README.md) · [API](API.md) · [数学约定](MATHEMATICS.md)
+[English](https://proffitteoy.github.io/Topp/en/USAGE.html) · [仓库 README](https://github.com/proffitteoy/Topp/blob/main/README.md) · [API](API.md) · [数学约定](MATHEMATICS.md)
 
 ## 安装
 

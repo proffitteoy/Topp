@@ -60,6 +60,7 @@ bottleneck::SolverConfig make_config(int candidates, int threshold, int distance
                    : matcher == 7 ? bottleneck::MatcherStrategy::mandatory_flow
                    : matcher == 8 ? bottleneck::MatcherStrategy::fixed_greedy_kuhn
                    : matcher == 10 ? bottleneck::MatcherStrategy::geometric_hopcroft_karp
+                   : matcher == 11 ? bottleneck::MatcherStrategy::multiplicity_flow
                                   : bottleneck::MatcherStrategy::adaptive,
       order == 0 ? bottleneck::VertexOrder::natural : bottleneck::VertexOrder::degree_ascending,
   };

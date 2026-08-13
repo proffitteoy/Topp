@@ -1,6 +1,6 @@
 # 数学约定
 
-[English](MATHEMATICS.en.md) · [仓库 README](https://github.com/proffitteoy/Topp/blob/main/README.md) · [API](API.md)
+[English](https://proffitteoy.github.io/Topp/en/MATHEMATICS.html) · [仓库 README](https://github.com/proffitteoy/Topp/blob/main/README.md) · [API](API.md)
 
 本文定义 Topp `v0.1.0` 公开 Python API 的距离语义。这里的 **exact** 表示算法不引入近似参数或近似容差；输入和返回值仍使用 IEEE 754 `float64`。
 

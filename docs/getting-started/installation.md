@@ -1,14 +1,16 @@
-# Installation
+# 安装
+
+[English](https://proffitteoy.github.io/Topp/en/getting-started/installation.html)
 
 ## Windows wheel
 
-Topp publishes wheels for Windows x64 and CPython 3.10–3.14:
+Topp 为 Windows x64 和 CPython 3.10–3.14 发布 wheel：
 
 ```console
 py -m pip install topp
 ```
 
-Confirm the installed version:
+确认安装版本：
 
 ```pycon
 >>> import topp
@@ -16,11 +18,11 @@ Confirm the installed version:
 '0.1.0'
 ```
 
-NumPy 1.23 or newer is installed automatically and is Topp's only runtime dependency.
+NumPy 1.23 或更高版本会自动安装，也是 Topp 唯一的运行时依赖。
 
-## Virtual environment
+## 虚拟环境
 
-Using an isolated environment is recommended:
+建议使用隔离环境：
 
 ```console
 py -m venv .venv
@@ -28,9 +30,9 @@ py -m venv .venv
 py -m pip install topp
 ```
 
-## Source build
+## 从源码构建
 
-A source build requires CMake 3.24 or newer and a C++20 compiler:
+源码构建需要 CMake 3.24 或更高版本，以及支持 C++20 的编译器：
 
 ```console
 git clone https://github.com/proffitteoy/Topp.git
@@ -38,19 +40,19 @@ cd Topp
 py -m pip install -v .
 ```
 
-Linux and macOS are not covered by CI in version 0.1.0. A successful local compilation on either platform is not currently a published support guarantee.
+Linux 和 macOS 尚未纳入 0.1.0 版本的 CI。在这些平台成功完成本地编译，并不代表它们属于当前公开支持范围。
 
-## Smoke test
+## 冒烟测试
 
 ```python
 import topp
 
 assert topp.bottleneck_distance([[0.0, 1.0]], []) == 0.5
-print("Topp is ready")
+print("Topp 已就绪")
 ```
 
-Expected output:
+预期输出：
 
 ```text
-Topp is ready
+Topp 已就绪
 ```

@@ -24,7 +24,10 @@ enum class WassersteinCandidateStrategy {
   sweep_two_pointer,
   topk_pricing_full_scan,
   topk_pricing_sweep,
+  topk_pricing_kdtree,
   topk_pricing_sweep_incremental,
+  topk_pricing_sweep_persistent,
+  topk_pricing_sweep_dynamic,
   adaptive,
 };
 
@@ -46,6 +49,7 @@ enum class WassersteinMatcherStrategy {
   dense_hungarian,
   dense_sap,
   dense_sap_row_reduction,
+  dense_sap_jv_reduction,
   sparse_sap,
   adaptive,
 };
@@ -55,6 +59,8 @@ enum class WassersteinComponentStrategy {
   dense,
   sparse,
   tiny_sparse,
+  parallel_dense,
+  parallel_sparse,
   adaptive,
 };
 
@@ -95,6 +101,7 @@ struct WassersteinStats {
   std::uint64_t peak_materialized_edges = 0;
   std::uint64_t max_degree = 0;
   std::uint64_t sparse_fallbacks = 0;
+  std::uint64_t jv_fallbacks = 0;
   std::uint64_t component_count = 0;
   std::uint64_t largest_component = 0;
   std::uint64_t tiny_components = 0;

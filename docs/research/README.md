@@ -15,6 +15,7 @@
 - [初始化基线](evidence/BASELINE.md)
 - [Bottleneck 实验登记](evidence/KERNEL_EXPERIMENTS.md)
 - [Bottleneck 第一阶段报告](evidence/PHASE1_KERNEL_REPORT.md)
+- [Bottleneck 第二阶段 multiplicity 报告](evidence/PHASE2_MULTIPLICITY_REPORT.md)
 - [Wasserstein 内核实验记录](evidence/WASSERSTEIN_KERNEL.md)
 
 ## Proposals
@@ -24,5 +25,6 @@
 - [Wasserstein 优化方案](proposals/wasserstein优化方案.md)
 - [Wasserstein 第二阶段](proposals/wasserstein第二阶段.md)
 - [Bottleneck 优化方向](proposals/优化方向.md)
+- [Bottleneck 第二阶段](proposals/bottleneck第二阶段.md)
 - [历史发布流程建议](proposals/发布流程.md)
 - [历史 Python API 长篇草案](proposals/接口文档.md)

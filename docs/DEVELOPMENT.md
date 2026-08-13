@@ -1,6 +1,6 @@
 # Topp 开发指南
 
-[English](DEVELOPMENT.en.md) · [贡献指南](https://github.com/proffitteoy/Topp/blob/main/CONTRIBUTING.md)
+[English](https://proffitteoy.github.io/Topp/en/DEVELOPMENT.html) · [贡献指南](https://github.com/proffitteoy/Topp/blob/main/CONTRIBUTING.md)
 
 普通用户只使用 Python API。`include/bottleneck/*`、实验策略和 benchmark 面向社区维护者，不承诺稳定 C++ ABI。
 

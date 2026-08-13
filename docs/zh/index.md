@@ -1,12 +1,9 @@
+---
+orphan: true
+---
+
 # Topp 中文文档
 
-中文文档目前覆盖正式契约；逐项教程以英文站点为主。
+中文现已是文档站的默认语言。
 
-```{toctree}
-:maxdepth: 1
-
-../USAGE
-../API
-../MATHEMATICS
-../DEVELOPMENT
-```
+[返回中文首页](../index.md) · [English](https://proffitteoy.github.io/Topp/en/)

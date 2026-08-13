@@ -61,6 +61,7 @@ enum class MatcherStrategy {
   constraint_kuhn,
   component_kuhn,
   mandatory_flow,
+  multiplicity_flow,
   adaptive,
   hopcroft_karp,
   greedy_hopcroft_karp,
@@ -98,6 +99,9 @@ struct SolverStats {
   std::uint64_t geometric_queries = 0;
   std::uint64_t kd_nodes_visited = 0;
   std::uint64_t refinement_rounds = 0;
+  std::uint64_t multiplicity_groups = 0;
+  std::uint64_t multiplicity_points_removed = 0;
+  std::uint64_t capacity_edges = 0;
 };
 
 class PreparedDiagram {

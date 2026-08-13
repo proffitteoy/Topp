@@ -1,25 +1,27 @@
-# Platforms and support
+# 平台与支持
 
-## Validated release surface
+[English](https://proffitteoy.github.io/Topp/en/platforms.html)
 
-| Component | Version 0.1.0 status |
+## 已验证的发布范围
+
+| 组件 | 0.1.0 版本状态 |
 |---|---|
 | Python | CPython 3.10–3.14 |
-| Prebuilt wheels | Windows x64 |
-| Runtime dependency | NumPy 1.23 or newer |
-| Compiler for source builds | C++20 |
-| Build system | CMake 3.24 or newer |
+| 预编译 wheels | Windows x64 |
+| 运行时依赖 | NumPy 1.23 或更高版本 |
+| 源码构建编译器 | C++20 |
+| 构建系统 | CMake 3.24 或更高版本 |
 
-CI builds and tests the C++ kernel, scalar fallback, Python wheels, and sdist installation on Windows Server 2022.
+CI 在 Windows Server 2022 上构建并测试 C++ 内核、标量回退、Python wheels 和 sdist 安装。
 
-## Linux and macOS
+## Linux 与 macOS
 
-The source is intended to be portable C++20, but Linux and macOS are not part of the version 0.1.0 CI matrix. Source builds on those systems may work, but they are not currently validated release platforms.
+源码设计为可移植的 C++20，但 Linux 和 macOS 尚未纳入 0.1.0 版本的 CI。在这些系统上可能成功完成源码构建，但目前不属于已验证的发布平台。
 
-## CPU dispatch
+## CPU 调度
 
-Windows x64 builds may include AVX2 kernels. Availability is checked at runtime; AVX2 is not required. Unsupported CPUs use the scalar implementation.
+Windows x64 构建可能包含 AVX2 内核。是否可用会在运行时检测；AVX2 不是必需条件，不支持的 CPU 会使用标量实现。
 
-## Public and experimental interfaces
+## 公开与实验接口
 
-The Python API documented on this site is the public compatibility surface. The C++ headers and internal strategy switches support maintenance and kernel experiments; version 0.1.0 does not promise a stable C++ ABI.
+本站记录的 Python API 是公开兼容性范围。C++ 头文件和内部策略开关用于维护及内核实验；0.1.0 版本不承诺稳定的 C++ ABI。

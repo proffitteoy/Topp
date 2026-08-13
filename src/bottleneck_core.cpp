@@ -65,10 +65,15 @@ struct DistanceTable {
       : first(first_prepared.finite_points()), second(second_prepared.finite_points()),
         first_births(first_prepared.finite_births()), first_deaths(first_prepared.finite_deaths()),
         second_births(second_prepared.finite_births()), second_deaths(second_prepared.finite_deaths()),
+        first_birth_order(first_prepared.finite_birth_order()),
         second_sorted_births(second_prepared.sorted_finite_births()),
         second_birth_order(second_prepared.finite_birth_order()),
         strategy(strategy), first_diagonal(first_prepared.finite_diagonal_distances()),
         second_diagonal(second_prepared.finite_diagonal_distances()),
+        first_representatives(first_prepared.finite_duplicate_representatives()),
+        second_representatives(second_prepared.finite_duplicate_representatives()),
+        first_multiplicities(first_prepared.finite_duplicate_multiplicities()),
+        second_multiplicities(second_prepared.finite_duplicate_multiplicities()),
         first_max_diagonal(first_prepared.max_finite_diagonal_distance()),
         second_max_diagonal(second_prepared.max_finite_diagonal_distance()) {
     if (strategy == DistanceStrategy::dense_aos || strategy == DistanceStrategy::dense_soa ||
@@ -133,11 +138,16 @@ struct DistanceTable {
   const std::vector<double>& first_deaths;
   const std::vector<double>& second_births;
   const std::vector<double>& second_deaths;
+  const std::vector<std::size_t>& first_birth_order;
   const std::vector<double>& second_sorted_births;
   const std::vector<std::size_t>& second_birth_order;
   DistanceStrategy strategy;
   const std::vector<double>& first_diagonal;
   const std::vector<double>& second_diagonal;
+  const std::vector<std::size_t>& first_representatives;
+  const std::vector<std::size_t>& second_representatives;
+  const std::vector<std::size_t>& first_multiplicities;
+  const std::vector<std::size_t>& second_multiplicities;
   double first_max_diagonal;
   double second_max_diagonal;
   std::vector<double> cross;
@@ -1147,6 +1157,78 @@ bool mandatory_flow_within(const DistanceTable& table, double threshold, SolverS
   return flow.max_flow(super_source, super_sink, stats) == required;
 }
 
+int flow_capacity(std::size_t value) {
+  if (value > static_cast<std::size_t>((std::numeric_limits<int>::max)())) {
+    throw std::overflow_error("diagram multiplicity exceeds flow capacity");
+  }
+  return static_cast<int>(value);
+}
+
+bool multiplicity_flow_within(const DistanceTable& table, double threshold,
+                              SolverStats* stats) {
+  const std::size_t n = table.first_representatives.size();
+  const std::size_t m = table.second_representatives.size();
+  const int source = static_cast<int>(n + m);
+  const int sink = source + 1;
+  const int super_source = sink + 1;
+  const int super_sink = super_source + 1;
+  Dinic flow(static_cast<std::size_t>(super_sink + 1));
+  std::vector<int> demand(static_cast<std::size_t>(super_sink + 1), 0);
+
+  const auto add_bounded_edge = [&](int from, int to, int lower, int upper) {
+    flow.add_edge(from, to, upper - lower);
+    demand[static_cast<std::size_t>(from)] -= lower;
+    demand[static_cast<std::size_t>(to)] += lower;
+  };
+
+  if (stats != nullptr) {
+    stats->multiplicity_groups += n + m;
+    stats->multiplicity_points_removed +=
+        table.first.size() + table.second.size() - n - m;
+  }
+  for (std::size_t group = 0; group < n; ++group) {
+    const std::size_t point = table.first_representatives[group];
+    const int capacity = flow_capacity(table.first_multiplicities[group]);
+    const int mandatory = table.first_diagonal[point] > threshold ? capacity : 0;
+    add_bounded_edge(source, static_cast<int>(group), mandatory, capacity);
+  }
+  for (std::size_t group = 0; group < m; ++group) {
+    const std::size_t point = table.second_representatives[group];
+    const int capacity = flow_capacity(table.second_multiplicities[group]);
+    const int mandatory = table.second_diagonal[point] > threshold ? capacity : 0;
+    add_bounded_edge(static_cast<int>(n + group), sink, mandatory, capacity);
+  }
+  for (std::size_t left_group = 0; left_group < n; ++left_group) {
+    const std::size_t left = table.first_representatives[left_group];
+    for (std::size_t right_group = 0; right_group < m; ++right_group) {
+      const std::size_t right = table.second_representatives[right_group];
+      if (stats != nullptr) {
+        ++stats->adjacency_checks;
+      }
+      if (table.cross_distance(left, right) <= threshold) {
+        const int capacity = flow_capacity((std::min)(table.first_multiplicities[left_group],
+                                                      table.second_multiplicities[right_group]));
+        flow.add_edge(static_cast<int>(left_group), static_cast<int>(n + right_group), capacity);
+        if (stats != nullptr) {
+          ++stats->capacity_edges;
+        }
+      }
+    }
+  }
+  flow.add_edge(sink, source, flow_capacity(table.first.size() + table.second.size()));
+
+  int required = 0;
+  for (int vertex = 0; vertex <= sink; ++vertex) {
+    if (demand[static_cast<std::size_t>(vertex)] > 0) {
+      flow.add_edge(super_source, vertex, demand[static_cast<std::size_t>(vertex)]);
+      required += demand[static_cast<std::size_t>(vertex)];
+    } else if (demand[static_cast<std::size_t>(vertex)] < 0) {
+      flow.add_edge(vertex, super_sink, -demand[static_cast<std::size_t>(vertex)]);
+    }
+  }
+  return flow.max_flow(super_source, super_sink, stats) == required;
+}
+
 double sampled_cross_density(const DistanceTable& table, double threshold, SolverStats* stats) {
   const std::size_t total = table.first.size() * table.second.size();
   if (total == 0) {
@@ -1187,6 +1269,9 @@ bool finite_within(const DistanceTable& table, double threshold, const SolverCon
   if (matcher == MatcherStrategy::mandatory_flow) {
     return mandatory_flow_within(table, threshold, stats);
   }
+  if (matcher == MatcherStrategy::multiplicity_flow) {
+    return multiplicity_flow_within(table, threshold, stats);
+  }
   ThresholdGraph graph(table, threshold, config.adjacency, stats);
   if (matcher == MatcherStrategy::hopcroft_karp ||
       matcher == MatcherStrategy::greedy_hopcroft_karp) {
@@ -1209,13 +1294,22 @@ bool finite_within(const DistanceTable& table, double threshold, const SolverCon
 }
 
 std::vector<double> candidates(const DistanceTable& table, CandidateStrategy strategy,
-                               bool ordered, SolverStats* stats) {
+                               bool ordered, bool multiplicity_compressed,
+                               SolverStats* stats) {
   std::vector<double> result;
-  result.reserve(1 + table.first_diagonal.size() + table.second_diagonal.size() +
-                 table.first.size() * table.second.size());
+  const auto& first_indices = multiplicity_compressed ? table.first_representatives
+                                                       : table.first_birth_order;
+  const auto& second_indices = multiplicity_compressed ? table.second_representatives
+                                                        : table.second_birth_order;
+  result.reserve(1 + first_indices.size() + second_indices.size() +
+                 first_indices.size() * second_indices.size());
   result.push_back(0.0);
-  result.insert(result.end(), table.first_diagonal.begin(), table.first_diagonal.end());
-  result.insert(result.end(), table.second_diagonal.begin(), table.second_diagonal.end());
+  for (std::size_t index : first_indices) {
+    result.push_back(table.first_diagonal[index]);
+  }
+  for (std::size_t index : second_indices) {
+    result.push_back(table.second_diagonal[index]);
+  }
   std::uint64_t clipped = 0;
   if (strategy == CandidateStrategy::sort_unique_clipped ||
       strategy == CandidateStrategy::sort_unique_greedy_clipped) {
@@ -1227,9 +1321,9 @@ std::vector<double> candidates(const DistanceTable& table, CandidateStrategy str
         std::size_t second;
       };
       std::vector<CrossCandidate> cross;
-      cross.reserve(table.first.size() * table.second.size());
-      for (std::size_t i = 0; i < table.first.size(); ++i) {
-        for (std::size_t j = 0; j < table.second.size(); ++j) {
+      cross.reserve(first_indices.size() * second_indices.size());
+      for (std::size_t i : first_indices) {
+        for (std::size_t j : second_indices) {
           cross.push_back({table.cross_distance(i, j), i, j});
         }
       }
@@ -1276,8 +1370,8 @@ std::vector<double> candidates(const DistanceTable& table, CandidateStrategy str
         }
       }
     } else {
-      for (std::size_t i = 0; i < table.first.size(); ++i) {
-        for (std::size_t j = 0; j < table.second.size(); ++j) {
+      for (std::size_t i : first_indices) {
+        for (std::size_t j : second_indices) {
           const double value = table.cross_distance(i, j);
           if (value <= upper_bound) {
             result.push_back(value);
@@ -1288,8 +1382,8 @@ std::vector<double> candidates(const DistanceTable& table, CandidateStrategy str
       }
     }
   } else {
-    for (std::size_t i = 0; i < table.first.size(); ++i) {
-      for (std::size_t j = 0; j < table.second.size(); ++j) {
+    for (std::size_t i : first_indices) {
+      for (std::size_t j : second_indices) {
         result.push_back(table.cross_distance(i, j));
       }
     }
@@ -1525,10 +1619,55 @@ bool prefer_geometric_refinement(const PreparedDiagram& first,
   return fraction >= 0.01;
 }
 
+bool prefer_multiplicity_flow(const PreparedDiagram& first,
+                              const PreparedDiagram& second) {
+  const std::size_t raw = first.finite_points().size() + second.finite_points().size();
+  if (raw < 128) {
+    return false;
+  }
+  const std::size_t unique = first.finite_duplicate_representatives().size() +
+                             second.finite_duplicate_representatives().size();
+  const std::size_t divisor = raw >= 1024 ? 4 : raw >= 512 ? 5 : 6;
+  return unique <= (raw + divisor - 1) / divisor;
+}
+
+bool identical_finite_multiset(const PreparedDiagram& first,
+                               const PreparedDiagram& second) {
+  const auto& first_representatives = first.finite_duplicate_representatives();
+  const auto& second_representatives = second.finite_duplicate_representatives();
+  if (first_representatives.size() != second_representatives.size() ||
+      first.finite_duplicate_multiplicities() !=
+          second.finite_duplicate_multiplicities()) {
+    return false;
+  }
+  for (std::size_t group = 0; group < first_representatives.size(); ++group) {
+    const Point& left = first.finite_points()[first_representatives[group]];
+    const Point& right = second.finite_points()[second_representatives[group]];
+    if (left.birth != right.birth || left.death != right.death) {
+      return false;
+    }
+  }
+  return true;
+}
+
 double finite_distance(const PreparedDiagram& first, const PreparedDiagram& second,
-                       const SolverConfig& config, SolverStats* stats) {
+                        const SolverConfig& config, SolverStats* stats) {
+  if (prefer_multiplicity_flow(first, second) &&
+      identical_finite_multiset(first, second)) {
+    return 0.0;
+  }
   ThresholdStrategy threshold = config.threshold;
   if (threshold == ThresholdStrategy::adaptive) {
+    if (config.matcher == MatcherStrategy::adaptive &&
+        prefer_multiplicity_flow(first, second)) {
+      SolverConfig multiplicity = config;
+      multiplicity.threshold = ThresholdStrategy::quickselect;
+      multiplicity.distance = DistanceStrategy::recompute_soa;
+      multiplicity.adjacency = AdjacencyStrategy::on_demand;
+      multiplicity.matcher = MatcherStrategy::multiplicity_flow;
+      multiplicity.vertex_order = VertexOrder::natural;
+      return finite_distance(first, second, multiplicity, stats);
+    }
     if (first.finite_points().size() + second.finite_points().size() >= 128) {
       const double diagonal_upper =
           (std::max)(first.max_finite_diagonal_distance(),
@@ -1567,7 +1706,10 @@ double finite_distance(const PreparedDiagram& first, const PreparedDiagram& seco
                                        stats);
   }
   const bool quickselect = threshold == ThresholdStrategy::quickselect;
-  auto radii = candidates(table, config.candidates, !quickselect, stats);
+  const bool multiplicity_compressed =
+      config.matcher == MatcherStrategy::multiplicity_flow;
+  auto radii = candidates(table, config.candidates, !quickselect,
+                          multiplicity_compressed, stats);
 
   const auto decision = [&](std::size_t index) {
     if (stats != nullptr) {
@@ -1843,6 +1985,19 @@ bool bottleneck_within(const PreparedDiagram& first, const PreparedDiagram& seco
   if (stats != nullptr) {
     ++stats->threshold_decisions;
   }
+  if (prefer_multiplicity_flow(first, second) &&
+      identical_finite_multiset(first, second)) {
+    return true;
+  }
+  if (config.matcher == MatcherStrategy::adaptive &&
+      prefer_multiplicity_flow(first, second)) {
+    SolverConfig multiplicity = config;
+    multiplicity.distance = DistanceStrategy::recompute_soa;
+    multiplicity.adjacency = AdjacencyStrategy::on_demand;
+    multiplicity.matcher = MatcherStrategy::multiplicity_flow;
+    multiplicity.vertex_order = VertexOrder::natural;
+    return bottleneck_within(first, second, threshold, multiplicity, stats);
+  }
   if (config.matcher == MatcherStrategy::geometric_hopcroft_karp) {
     if (first.finite_points().size() > second.finite_points().size()) {
       return detail::geometric_bottleneck_within(second, first, threshold, stats);
@@ -1975,6 +2130,8 @@ const char* to_string(MatcherStrategy strategy) noexcept {
       return "component_kuhn";
     case MatcherStrategy::mandatory_flow:
       return "mandatory_flow";
+    case MatcherStrategy::multiplicity_flow:
+      return "multiplicity_flow";
     case MatcherStrategy::adaptive:
       return "adaptive";
     case MatcherStrategy::hopcroft_karp:

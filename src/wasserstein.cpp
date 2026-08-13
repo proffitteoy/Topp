@@ -1,6 +1,7 @@
 #include <bottleneck/wasserstein.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <bit>
 #include <chrono>
 #include <cmath>
@@ -618,7 +619,10 @@ void generate_candidates(const PreparedDiagram& first,
       return;
     case WassersteinCandidateStrategy::topk_pricing_full_scan:
     case WassersteinCandidateStrategy::topk_pricing_sweep:
+    case WassersteinCandidateStrategy::topk_pricing_kdtree:
     case WassersteinCandidateStrategy::topk_pricing_sweep_incremental:
+    case WassersteinCandidateStrategy::topk_pricing_sweep_persistent:
+    case WassersteinCandidateStrategy::topk_pricing_sweep_dynamic:
       break;
     case WassersteinCandidateStrategy::adaptive:
       break;
@@ -851,6 +855,16 @@ struct MatchingResult {
   std::vector<int> row_to_column;
 };
 
+struct SparseDualState {
+  std::vector<Weight> row_potential;
+  std::vector<Weight> column_potential;
+  bool valid = false;
+};
+
+bool build_matching_dual(const WeightedGraph& graph,
+                         const MatchingResult& matching,
+                         SparseDualState& dual);
+
 ActiveVertices active_vertices(const WeightedGraph& graph) {
   std::vector<bool> row_active(graph.rows, false);
   std::vector<bool> column_active(graph.columns, false);
@@ -990,7 +1004,8 @@ MatchingResult dense_assignment(const WeightedGraph& graph, bool compact,
 MatchingResult dense_rectangular_sap(const WeightedGraph& graph, bool compact,
                                      WassersteinStats* stats,
                                      WassersteinWorkspace::Impl* workspace,
-                                     bool row_reduction) {
+                                     bool row_reduction,
+                                     bool jv_reduction = false) {
   std::vector<double> dense_lookup;
   if (graph.kind != StoredGraphKind::dense) {
     dense_lookup.assign(graph.rows * graph.columns, 0.0);
@@ -1063,7 +1078,188 @@ MatchingResult dense_rectangular_sap(const WeightedGraph& graph, bool compact,
   used.resize(long_count + 1);
   initially_matched.assign(short_count + 1, std::uint8_t{0});
 
-  if (row_reduction) {
+  if (jv_reduction) {
+    std::vector<std::size_t> row_column(short_count + 1, 0);
+    for (std::size_t column = long_count; column > 0; --column) {
+      Weight best_cost = std::numeric_limits<Weight>::infinity();
+      std::size_t best_row = 0;
+      for (std::size_t short_row = 1; short_row <= short_count; ++short_row) {
+        const Weight cost = -static_cast<Weight>(
+            local_saving(short_row - 1, column - 1));
+        if (cost < best_cost) {
+          best_cost = cost;
+          best_row = short_row;
+        }
+      }
+      long_potential[column] = best_cost;
+      if (row_column[best_row] != 0) {
+        matched_short[row_column[best_row]] = 0;
+      }
+      row_column[best_row] = column;
+      matched_short[column] = best_row;
+    }
+
+    // Reduction transfer: move as much dual mass as possible from the
+    // assigned column to its row while preserving feasibility and tightness.
+    for (std::size_t short_row = 1; short_row <= short_count; ++short_row) {
+      const std::size_t assigned_column = row_column[short_row];
+      if (assigned_column == 0) {
+        continue;
+      }
+      Weight second_reduced = std::numeric_limits<Weight>::infinity();
+      for (std::size_t column = 1; column <= long_count; ++column) {
+        if (column == assigned_column) {
+          continue;
+        }
+        const Weight cost = -static_cast<Weight>(
+            local_saving(short_row - 1, column - 1));
+        second_reduced =
+            (std::min)(second_reduced, cost - long_potential[column]);
+      }
+      if (!std::isfinite(second_reduced)) {
+        second_reduced = Weight{0};
+      }
+      const Weight assigned_cost = -static_cast<Weight>(
+          local_saving(short_row - 1, assigned_column - 1));
+      const Weight assigned_reduced =
+          assigned_cost - long_potential[assigned_column];
+      const Weight transfer = second_reduced - assigned_reduced;
+      long_potential[assigned_column] -= transfer;
+    }
+
+    std::vector<std::size_t> free_rows;
+    free_rows.reserve(short_count);
+    for (std::size_t short_row = 1; short_row <= short_count; ++short_row) {
+      if (row_column[short_row] == 0) {
+        free_rows.push_back(short_row);
+      }
+    }
+    // Two augmenting-row-reduction passes. Displaced rows are handled by the
+    // next pass; any rows still free afterwards enter the exact SAP loop.
+    for (int pass = 0; pass < 2 && !free_rows.empty(); ++pass) {
+      std::vector<std::size_t> next_free;
+      next_free.reserve(free_rows.size());
+      for (std::size_t short_row : free_rows) {
+        Weight minimum_value = std::numeric_limits<Weight>::infinity();
+        Weight second_value = std::numeric_limits<Weight>::infinity();
+        std::size_t best_column = 0;
+        std::size_t second_column = 0;
+        for (std::size_t column = 1; column <= long_count; ++column) {
+          const Weight cost = -static_cast<Weight>(
+              local_saving(short_row - 1, column - 1));
+          const Weight reduced = cost - long_potential[column];
+          if (reduced < minimum_value) {
+            second_value = minimum_value;
+            second_column = best_column;
+            minimum_value = reduced;
+            best_column = column;
+          } else if (reduced < second_value) {
+            second_value = reduced;
+            second_column = column;
+          }
+        }
+        if (!std::isfinite(second_value)) {
+          second_value = minimum_value;
+        }
+        std::size_t displaced = matched_short[best_column];
+        if (minimum_value < second_value) {
+          long_potential[best_column] -= second_value - minimum_value;
+        } else if (displaced != 0 && second_column != 0) {
+          best_column = second_column;
+          displaced = matched_short[best_column];
+        }
+        matched_short[best_column] = short_row;
+        row_column[short_row] = best_column;
+        if (displaced != 0) {
+          row_column[displaced] = 0;
+          next_free.push_back(displaced);
+        }
+      }
+      free_rows = std::move(next_free);
+    }
+    std::fill(row_column.begin(), row_column.end(), std::size_t{0});
+    for (std::size_t column = 1; column <= long_count; ++column) {
+      if (matched_short[column] != 0) {
+        row_column[matched_short[column]] = column;
+      }
+    }
+    for (std::size_t short_row = 1; short_row <= short_count; ++short_row) {
+      const std::size_t assigned_column = row_column[short_row];
+      if (assigned_column != 0) {
+        const Weight cost = -static_cast<Weight>(
+            local_saving(short_row - 1, assigned_column - 1));
+        short_potential[short_row] =
+            cost - long_potential[assigned_column];
+      } else {
+        Weight minimum_reduced = std::numeric_limits<Weight>::infinity();
+        for (std::size_t column = 1; column <= long_count; ++column) {
+          const Weight cost = -static_cast<Weight>(
+              local_saving(short_row - 1, column - 1));
+          minimum_reduced =
+              (std::min)(minimum_reduced, cost - long_potential[column]);
+        }
+        short_potential[short_row] = minimum_reduced;
+      }
+    }
+    bool feasible = true;
+    std::vector<std::uint8_t> seen_rows(short_count + 1,
+                                        std::uint8_t{0});
+    for (std::size_t column = 1; column <= long_count && feasible; ++column) {
+      const std::size_t short_row = matched_short[column];
+      if (short_row == 0) {
+        continue;
+      }
+      if (seen_rows[short_row] != 0) {
+        feasible = false;
+        break;
+      }
+      seen_rows[short_row] = 1;
+      const Weight cost = -static_cast<Weight>(
+          local_saving(short_row - 1, column - 1));
+      const Weight reduced =
+          cost - short_potential[short_row] - long_potential[column];
+      const Weight scale =
+          (std::max)({Weight{1}, std::fabs(cost),
+                      std::fabs(short_potential[short_row]),
+                      std::fabs(long_potential[column])});
+      if (std::fabs(reduced) >
+          Weight{256} * std::numeric_limits<Weight>::epsilon() * scale) {
+        feasible = false;
+      }
+    }
+    for (std::size_t short_row = 1;
+         short_row <= short_count && feasible; ++short_row) {
+      for (std::size_t column = 1; column <= long_count; ++column) {
+        const Weight cost = -static_cast<Weight>(
+            local_saving(short_row - 1, column - 1));
+        const Weight reduced =
+            cost - short_potential[short_row] - long_potential[column];
+        const Weight scale =
+            (std::max)({Weight{1}, std::fabs(cost),
+                        std::fabs(short_potential[short_row]),
+                        std::fabs(long_potential[column])});
+        if (reduced <
+            -Weight{256} * std::numeric_limits<Weight>::epsilon() * scale) {
+          feasible = false;
+          break;
+        }
+      }
+    }
+    if (!feasible) {
+      short_potential.assign(short_count + 1, Weight{0});
+      long_potential.assign(long_count + 1, Weight{0});
+      matched_short.assign(long_count + 1, 0);
+      if (stats != nullptr) {
+        ++stats->jv_fallbacks;
+      }
+    }
+    for (std::size_t column = 1; column <= long_count; ++column) {
+      const std::size_t short_row = matched_short[column];
+      if (short_row != 0) {
+        initially_matched[short_row] = 1;
+      }
+    }
+  } else if (row_reduction) {
     for (std::size_t short_row = 1; short_row <= short_count; ++short_row) {
       Weight best_cost = std::numeric_limits<Weight>::infinity();
       std::size_t best_column = 0;
@@ -1151,6 +1347,16 @@ MatchingResult dense_rectangular_sap(const WeightedGraph& graph, bool compact,
       }
     }
   }
+  if (jv_reduction) {
+    SparseDualState certificate;
+    if (!build_matching_dual(graph, result, certificate)) {
+      if (stats != nullptr) {
+        ++stats->jv_fallbacks;
+      }
+      return dense_rectangular_sap(graph, compact, stats, workspace, false,
+                                   false);
+    }
+  }
   return result;
 }
 
@@ -1160,16 +1366,6 @@ struct ResidualEdge {
   int capacity = 0;
   Weight cost = 0;
 };
-
-struct SparseDualState {
-  std::vector<Weight> row_potential;
-  std::vector<Weight> column_potential;
-  bool valid = false;
-};
-
-bool build_matching_dual(const WeightedGraph& graph,
-                         const MatchingResult& matching,
-                         SparseDualState& dual);
 
 void add_residual_edge(std::vector<std::vector<ResidualEdge>>& network, int source,
                        int destination, Weight cost, int capacity = 1) {
@@ -1624,6 +1820,348 @@ MatchingResult sparse_cycle_reoptimize(const WeightedGraph& graph,
   return result;
 }
 
+class PersistentCycleReoptimizer {
+ public:
+  PersistentCycleReoptimizer(std::size_t rows, std::size_t columns)
+      : rows_(rows), columns_(columns), row_base_(1),
+        column_base_(row_base_ + static_cast<int>(rows)),
+        sink_(column_base_ + static_cast<int>(columns)),
+        network_(static_cast<std::size_t>(sink_ + 1)),
+        source_edges_(rows), sink_edges_(columns), known_(rows) {
+    for (std::size_t row = 0; row < rows_; ++row) {
+      source_edges_[row] = network_[0].size();
+      add_residual_edge(network_, 0, row_base_ + static_cast<int>(row), 0);
+    }
+    for (std::size_t column = 0; column < columns_; ++column) {
+      const int node = column_base_ + static_cast<int>(column);
+      sink_edges_[column] = network_[static_cast<std::size_t>(node)].size();
+      add_residual_edge(network_, node, sink_, 0);
+    }
+    virtual_edge_ = network_[static_cast<std::size_t>(sink_)].size();
+    add_residual_edge(network_, sink_, 0, 0,
+                      static_cast<int>((std::min)(rows_, columns_)));
+    const std::size_t nodes = network_.size();
+    distance_.resize(nodes);
+    previous_node_.resize(nodes);
+    previous_edge_.resize(nodes);
+  }
+
+  void initialize(const CandidateRows& candidates,
+                  const MatchingResult& matching,
+                  const SparseDualState* dual = nullptr) {
+    append(candidates);
+    for (std::size_t row = 0; row < rows_; ++row) {
+      const int column = matching.row_to_column[row];
+      if (column < 0) {
+        continue;
+      }
+      const auto iterator = std::lower_bound(
+          known_[row].begin(), known_[row].end(),
+          static_cast<std::uint32_t>(column),
+          [](const KnownEdge& edge, std::uint32_t target) {
+            return edge.column < target;
+          });
+      if (iterator == known_[row].end() ||
+          iterator->column != static_cast<std::uint32_t>(column)) {
+        continue;
+      }
+      send_flow(0, source_edges_[row]);
+      send_flow(row_base_ + static_cast<int>(row), iterator->edge_index);
+      send_flow(column_base_ + column,
+                sink_edges_[static_cast<std::size_t>(column)]);
+      send_flow(sink_, virtual_edge_);
+    }
+    potential_.assign(network_.size(), Weight{0});
+    if (dual != nullptr && dual->valid &&
+        dual->row_potential.size() == rows_ &&
+        dual->column_potential.size() == columns_) {
+      for (std::size_t row = 0; row < rows_; ++row) {
+        potential_[static_cast<std::size_t>(row_base_) + row] =
+            dual->row_potential[row];
+      }
+      for (std::size_t column = 0; column < columns_; ++column) {
+        potential_[static_cast<std::size_t>(column_base_) + column] =
+            -dual->column_potential[column];
+      }
+    }
+  }
+
+  void append(const CandidateRows& candidates) {
+    for (std::size_t row = 0; row < rows_; ++row) {
+      auto& known = known_[row];
+      for (const Edge& edge : candidates.edges[row]) {
+        const auto position = std::lower_bound(
+            known.begin(), known.end(), edge.column,
+            [](const KnownEdge& item, std::uint32_t target) {
+              return item.column < target;
+            });
+        if (position != known.end() && position->column == edge.column) {
+          continue;
+        }
+        const int node = row_base_ + static_cast<int>(row);
+        const std::size_t edge_index =
+            network_[static_cast<std::size_t>(node)].size();
+        add_residual_edge(network_, node,
+                          column_base_ + static_cast<int>(edge.column),
+                          -static_cast<Weight>(edge.saving));
+        known.insert(position, {edge.column, edge_index});
+      }
+    }
+  }
+
+  MatchingResult reoptimize(WassersteinStats* stats) {
+    const std::size_t node_count = network_.size();
+    while (true) {
+      std::fill(distance_.begin(), distance_.end(), Weight{0});
+      std::fill(previous_node_.begin(), previous_node_.end(), -1);
+      std::fill(previous_edge_.begin(), previous_edge_.end(), -1);
+      int updated = -1;
+      for (std::size_t pass = 0; pass < node_count; ++pass) {
+        updated = -1;
+        for (std::size_t node = 0; node < node_count; ++node) {
+          for (std::size_t edge_index = 0; edge_index < network_[node].size();
+               ++edge_index) {
+            const ResidualEdge& edge = network_[node][edge_index];
+            if (edge.capacity == 0) {
+              continue;
+            }
+            const Weight candidate = distance_[node] + edge.cost;
+            const Weight scale =
+                (std::max)({Weight{1}, std::fabs(candidate),
+                            std::fabs(distance_[static_cast<std::size_t>(
+                                edge.destination)])});
+            if (candidate + Weight{64} *
+                                    std::numeric_limits<Weight>::epsilon() *
+                                    scale >=
+                distance_[static_cast<std::size_t>(edge.destination)]) {
+              continue;
+            }
+            distance_[static_cast<std::size_t>(edge.destination)] = candidate;
+            previous_node_[static_cast<std::size_t>(edge.destination)] =
+                static_cast<int>(node);
+            previous_edge_[static_cast<std::size_t>(edge.destination)] =
+                static_cast<int>(edge_index);
+            updated = edge.destination;
+          }
+        }
+        if (updated < 0) {
+          break;
+        }
+      }
+      if (updated < 0) {
+        break;
+      }
+      int cycle = updated;
+      for (std::size_t step = 0; step < node_count; ++step) {
+        cycle = previous_node_[static_cast<std::size_t>(cycle)];
+        if (cycle < 0) {
+          break;
+        }
+      }
+      if (cycle < 0) {
+        break;
+      }
+      int flow = (std::numeric_limits<int>::max)();
+      int node = cycle;
+      do {
+        const int parent = previous_node_[static_cast<std::size_t>(node)];
+        const int edge_index = previous_edge_[static_cast<std::size_t>(node)];
+        flow = (std::min)(
+            flow, network_[static_cast<std::size_t>(parent)]
+                          [static_cast<std::size_t>(edge_index)]
+                              .capacity);
+        node = parent;
+      } while (node != cycle);
+      node = cycle;
+      do {
+        const int parent = previous_node_[static_cast<std::size_t>(node)];
+        const int edge_index = previous_edge_[static_cast<std::size_t>(node)];
+        ResidualEdge& edge =
+            network_[static_cast<std::size_t>(parent)]
+                    [static_cast<std::size_t>(edge_index)];
+        edge.capacity -= flow;
+        network_[static_cast<std::size_t>(node)]
+                [static_cast<std::size_t>(edge.reverse)]
+                    .capacity += flow;
+        node = parent;
+      } while (node != cycle);
+      if (stats != nullptr) {
+        ++stats->augmentations;
+      }
+    }
+    return matching();
+  }
+
+  bool append_and_reoptimize(const CandidateRows& candidates,
+                             WassersteinStats* stats) {
+    using QueueItem = std::pair<Weight, int>;
+    for (std::size_t row = 0; row < rows_; ++row) {
+      auto& known = known_[row];
+      for (const Edge& candidate_edge : candidates.edges[row]) {
+        const auto position = std::lower_bound(
+            known.begin(), known.end(), candidate_edge.column,
+            [](const KnownEdge& item, std::uint32_t target) {
+              return item.column < target;
+            });
+        if (position != known.end() &&
+            position->column == candidate_edge.column) {
+          continue;
+        }
+        const int from = row_base_ + static_cast<int>(row);
+        const int to = column_base_ + static_cast<int>(candidate_edge.column);
+        const std::size_t edge_index =
+            network_[static_cast<std::size_t>(from)].size();
+        add_residual_edge(network_, from, to,
+                          -static_cast<Weight>(candidate_edge.saving));
+        known.insert(position, {candidate_edge.column, edge_index});
+
+        const ResidualEdge& inserted =
+            network_[static_cast<std::size_t>(from)][edge_index];
+        const Weight inserted_reduced =
+            inserted.cost + potential_[static_cast<std::size_t>(from)] -
+            potential_[static_cast<std::size_t>(to)];
+        const Weight inserted_scale =
+            (std::max)({Weight{1}, std::fabs(inserted.cost),
+                        std::fabs(potential_[static_cast<std::size_t>(from)]),
+                        std::fabs(potential_[static_cast<std::size_t>(to)])});
+        const Weight tolerance =
+            Weight{128} * std::numeric_limits<Weight>::epsilon() *
+            inserted_scale;
+        if (inserted_reduced >= -tolerance) {
+          continue;
+        }
+
+        std::fill(distance_.begin(), distance_.end(),
+                  std::numeric_limits<Weight>::infinity());
+        std::fill(previous_node_.begin(), previous_node_.end(), -1);
+        std::fill(previous_edge_.begin(), previous_edge_.end(), -1);
+        std::priority_queue<QueueItem, std::vector<QueueItem>, std::greater<>>
+            queue;
+        distance_[static_cast<std::size_t>(to)] = Weight{0};
+        queue.push({Weight{0}, to});
+        while (!queue.empty()) {
+          const auto [queued_distance, node] = queue.top();
+          queue.pop();
+          if (queued_distance != distance_[static_cast<std::size_t>(node)]) {
+            continue;
+          }
+          for (std::size_t residual_index = 0;
+               residual_index <
+               network_[static_cast<std::size_t>(node)].size();
+               ++residual_index) {
+            if (node == from && residual_index == edge_index) {
+              continue;
+            }
+            const ResidualEdge& edge =
+                network_[static_cast<std::size_t>(node)][residual_index];
+            if (edge.capacity == 0) {
+              continue;
+            }
+            const Weight raw_reduced =
+                edge.cost + potential_[static_cast<std::size_t>(node)] -
+                potential_[static_cast<std::size_t>(edge.destination)];
+            const Weight scale =
+                (std::max)({Weight{1}, std::fabs(edge.cost),
+                            std::fabs(potential_[static_cast<std::size_t>(node)]),
+                            std::fabs(potential_[static_cast<std::size_t>(
+                                edge.destination)])});
+            const Weight edge_tolerance =
+                Weight{256} * std::numeric_limits<Weight>::epsilon() * scale;
+            if (raw_reduced < -edge_tolerance) {
+              return false;
+            }
+            const Weight reduced = (std::max)(Weight{0}, raw_reduced);
+            const Weight next = queued_distance + reduced;
+            if (next >=
+                distance_[static_cast<std::size_t>(edge.destination)]) {
+              continue;
+            }
+            distance_[static_cast<std::size_t>(edge.destination)] = next;
+            previous_node_[static_cast<std::size_t>(edge.destination)] = node;
+            previous_edge_[static_cast<std::size_t>(edge.destination)] =
+                static_cast<int>(residual_index);
+            queue.push({next, edge.destination});
+          }
+        }
+        const Weight path_reduced = distance_[static_cast<std::size_t>(from)];
+        if (!std::isfinite(path_reduced)) {
+          return false;
+        }
+        for (std::size_t node = 0; node < network_.size(); ++node) {
+          if (std::isfinite(distance_[node])) {
+            potential_[node] += distance_[node];
+          }
+        }
+        if (inserted_reduced + path_reduced >= -tolerance) {
+          continue;
+        }
+        send_flow(from, edge_index);
+        for (int node = from; node != to;
+             node = previous_node_[static_cast<std::size_t>(node)]) {
+          const int parent = previous_node_[static_cast<std::size_t>(node)];
+          const int residual_index =
+              previous_edge_[static_cast<std::size_t>(node)];
+          if (parent < 0 || residual_index < 0) {
+            return false;
+          }
+          send_flow(parent, static_cast<std::size_t>(residual_index));
+        }
+        if (stats != nullptr) {
+          ++stats->augmentations;
+        }
+      }
+    }
+    return true;
+  }
+
+ private:
+  struct KnownEdge {
+    std::uint32_t column = 0;
+    std::size_t edge_index = 0;
+  };
+
+  void send_flow(int from, std::size_t edge_index) {
+    ResidualEdge& edge =
+        network_[static_cast<std::size_t>(from)][edge_index];
+    --edge.capacity;
+    ++network_[static_cast<std::size_t>(edge.destination)]
+             [static_cast<std::size_t>(edge.reverse)]
+                 .capacity;
+  }
+
+  MatchingResult matching() const {
+    MatchingResult result(rows_);
+    for (std::size_t row = 0; row < rows_; ++row) {
+      const int node = row_base_ + static_cast<int>(row);
+      for (const KnownEdge& known : known_[row]) {
+        const ResidualEdge& edge =
+            network_[static_cast<std::size_t>(node)][known.edge_index];
+        if (edge.capacity == 0) {
+          result.row_to_column[row] = static_cast<int>(known.column);
+          result.saving -= edge.cost;
+          break;
+        }
+      }
+    }
+    return result;
+  }
+
+  std::size_t rows_ = 0;
+  std::size_t columns_ = 0;
+  int row_base_ = 0;
+  int column_base_ = 0;
+  int sink_ = 0;
+  std::vector<std::vector<ResidualEdge>> network_;
+  std::vector<std::size_t> source_edges_;
+  std::vector<std::size_t> sink_edges_;
+  std::size_t virtual_edge_ = 0;
+  std::vector<std::vector<KnownEdge>> known_;
+  std::vector<Weight> distance_;
+  std::vector<int> previous_node_;
+  std::vector<int> previous_edge_;
+  std::vector<Weight> potential_;
+};
+
 using TopEdgeKey = std::pair<Weight, std::int64_t>;
 using TopEdgeHeap =
     std::priority_queue<TopEdgeKey, std::vector<TopEdgeKey>,
@@ -1721,10 +2259,111 @@ void topk_seed_candidates(const PreparedDiagram& first,
   }
 }
 
+class PricingKdTree {
+ public:
+  PricingKdTree(const PreparedDiagram& diagram,
+                const std::vector<Weight>& column_potential)
+      : diagram_(diagram) {
+    const std::size_t columns = diagram.finite_points().size();
+    while (base_ < columns) {
+      base_ *= 2;
+    }
+    minimum_u_.assign(base_ * 2, std::numeric_limits<double>::infinity());
+    maximum_u_.assign(base_ * 2, -std::numeric_limits<double>::infinity());
+    maximum_v_.assign(base_ * 2, 0.0);
+    minimum_beta_.assign(base_ * 2,
+                         std::numeric_limits<Weight>::infinity());
+    const auto& order = diagram.finite_midpoint_order();
+    const auto& u = diagram.finite_midpoints();
+    const auto& v = diagram.finite_half_persistences();
+    for (std::size_t position = 0; position < columns; ++position) {
+      const std::size_t column = order[position];
+      const std::size_t node = base_ + position;
+      minimum_u_[node] = u[column];
+      maximum_u_[node] = u[column];
+      maximum_v_[node] = v[column];
+      minimum_beta_[node] = column_potential[column];
+    }
+    for (std::size_t node = base_; node-- > 1;) {
+      const std::size_t left = node * 2;
+      const std::size_t right = left + 1;
+      minimum_u_[node] = (std::min)(minimum_u_[left], minimum_u_[right]);
+      maximum_u_[node] = (std::max)(maximum_u_[left], maximum_u_[right]);
+      maximum_v_[node] = (std::max)(maximum_v_[left], maximum_v_[right]);
+      minimum_beta_[node] =
+          (std::min)(minimum_beta_[left], minimum_beta_[right]);
+    }
+  }
+
+  template <class Function>
+  void for_each_possible_violation(WassersteinMetric metric, double row_u,
+                                   double row_v, Weight row_potential,
+                                   Function&& function) const {
+    if (diagram_.finite_points().empty()) {
+      return;
+    }
+    const auto& order = diagram_.finite_midpoint_order();
+    std::vector<std::size_t> stack{1};
+    while (!stack.empty()) {
+      const std::size_t node = stack.back();
+      stack.pop_back();
+      if (!could_violate(node, metric, row_u, row_v, row_potential)) {
+        continue;
+      }
+      if (node >= base_) {
+        const std::size_t position = node - base_;
+        if (position < order.size()) {
+          function(order[position]);
+        }
+        continue;
+      }
+      stack.push_back(node * 2 + 1);
+      stack.push_back(node * 2);
+    }
+  }
+
+ private:
+  bool could_violate(std::size_t node, WassersteinMetric metric, double row_u,
+                     double row_v, Weight row_potential) const {
+    if (!std::isfinite(minimum_u_[node])) {
+      return false;
+    }
+    double minimum_du = 0.0;
+    if (row_u < minimum_u_[node]) {
+      minimum_du = minimum_u_[node] - row_u;
+    } else if (row_u > maximum_u_[node]) {
+      minimum_du = row_u - maximum_u_[node];
+    }
+    const Weight saving_upper =
+        metric == WassersteinMetric::w1_linf
+            ? static_cast<Weight>(
+                  2.0 * (std::min)(row_v, maximum_v_[node]) - minimum_du)
+            : static_cast<Weight>(4.0 * row_v * maximum_v_[node] -
+                                  2.0 * minimum_du * minimum_du);
+    const Weight reduced_upper =
+        saving_upper - row_potential - minimum_beta_[node];
+    const Weight scale =
+        (std::max)({Weight{1}, std::fabs(saving_upper),
+                    std::fabs(row_potential), std::fabs(minimum_beta_[node])});
+    // The bound is assembled from binary64 node summaries. Keep a small
+    // outward margin so a rounded-down upper bound cannot hide a genuinely
+    // positive reduced saving.
+    return reduced_upper >=
+           -Weight{128} * std::numeric_limits<Weight>::epsilon() * scale;
+  }
+
+  const PreparedDiagram& diagram_;
+  std::size_t base_ = 1;
+  std::vector<double> minimum_u_;
+  std::vector<double> maximum_u_;
+  std::vector<double> maximum_v_;
+  std::vector<Weight> minimum_beta_;
+};
+
 std::size_t price_and_add_edges(const PreparedDiagram& first,
                                 const PreparedDiagram& second,
                                 WassersteinMetric metric, std::size_t requested_top_k,
-                                bool full_scan,
+                                bool full_scan, bool kd_tree,
                                 const SparseDualState& dual,
                                 WassersteinStats* stats,
                                 CandidateRows& candidates) {
@@ -1737,12 +2376,16 @@ std::size_t price_and_add_edges(const PreparedDiagram& first,
   std::size_t added = 0;
   std::uint64_t priced = 0;
   std::uint64_t violations = 0;
+  const std::optional<PricingKdTree> pricing_tree =
+      kd_tree && dual.valid
+          ? std::optional<PricingKdTree>(
+                std::in_place, second, dual.column_potential)
+          : std::nullopt;
   for (std::size_t row = 0; row < first_points.size(); ++row) {
     auto& edges = candidates.edges[row];
     std::vector<Edge> pending;
     TopEdgeHeap heap;
-    for_each_pricing_candidate(first, second, metric, row, full_scan,
-                               [&](std::size_t column) {
+    const auto inspect = [&](std::size_t column) {
       const auto included = std::lower_bound(
           edges.begin(), edges.end(), column,
           [](const Edge& edge, std::size_t target) {
@@ -1769,7 +2412,15 @@ std::size_t price_and_add_edges(const PreparedDiagram& first,
         ++violations;
         retain_top_edge(heap, top_k, -reduced, column);
       }
-    });
+    };
+    if (pricing_tree.has_value()) {
+      pricing_tree->for_each_possible_violation(
+          metric, first.finite_midpoints()[row], first_v[row],
+          dual.row_potential[row], inspect);
+    } else {
+      for_each_pricing_candidate(first, second, metric, row, full_scan,
+                                 inspect);
+    }
     while (!heap.empty()) {
       const std::size_t column =
           static_cast<std::size_t>(-heap.top().second);
@@ -1807,7 +2458,7 @@ MatchingResult solve_priced_restricted_graph(const WeightedGraph& graph,
 MatchingResult priced_topk_matching(const PreparedDiagram& first,
                                     const PreparedDiagram& second,
                                     WassersteinMetric metric, std::size_t top_k,
-                                    bool full_scan, bool incremental,
+                                    bool full_scan, bool kd_tree, bool incremental,
                                     WassersteinStats* stats,
                                     CandidateRows& candidates,
                                     WeightedGraph& graph) {
@@ -1841,13 +2492,126 @@ MatchingResult priced_topk_matching(const PreparedDiagram& first,
 
     const auto pricing_start = Clock::now();
     const std::size_t added =
-        price_and_add_edges(first, second, metric, top_k, full_scan, dual, stats,
-                            candidates);
+        price_and_add_edges(first, second, metric, top_k, full_scan, kd_tree,
+                            dual, stats, candidates);
     if (stats != nullptr) {
       stats->pricing_time_ns += elapsed_ns(pricing_start, Clock::now());
     }
     if (added == 0) {
       return matching;
+    }
+  }
+}
+
+MatchingResult priced_topk_persistent_matching(
+    const PreparedDiagram& first, const PreparedDiagram& second,
+    WassersteinMetric metric, std::size_t top_k, WassersteinStats* stats,
+    CandidateRows& candidates, WeightedGraph& graph) {
+  const auto candidate_start = Clock::now();
+  topk_seed_candidates(first, second, metric, top_k, false, stats, candidates);
+  if (stats != nullptr) {
+    stats->candidate_time_ns += elapsed_ns(candidate_start, Clock::now());
+  }
+  const auto graph_start = Clock::now();
+  build_graph_into(candidates, WassersteinGraphStrategy::csr, stats, &first,
+                   &second, metric, graph);
+  if (stats != nullptr) {
+    stats->graph_time_ns += elapsed_ns(graph_start, Clock::now());
+  }
+  SparseDualState dual;
+  const auto solver_start = Clock::now();
+  MatchingResult matching = solve_priced_restricted_graph(graph, stats, dual);
+  PersistentCycleReoptimizer persistent(first.finite_points().size(),
+                                        second.finite_points().size());
+  persistent.initialize(candidates, matching);
+  if (stats != nullptr) {
+    stats->solver_time_ns += elapsed_ns(solver_start, Clock::now());
+  }
+  while (true) {
+    const auto pricing_start = Clock::now();
+    const std::size_t added = price_and_add_edges(
+        first, second, metric, top_k, false, false, dual, stats, candidates);
+    if (stats != nullptr) {
+      stats->pricing_time_ns += elapsed_ns(pricing_start, Clock::now());
+    }
+    if (added == 0) {
+      return matching;
+    }
+    const auto incremental_start = Clock::now();
+    persistent.append(candidates);
+    matching = persistent.reoptimize(stats);
+    const auto rebuild_start = Clock::now();
+    build_graph_into(candidates, WassersteinGraphStrategy::csr, stats, &first,
+                     &second, metric, graph);
+    if (stats != nullptr) {
+      stats->graph_time_ns += elapsed_ns(rebuild_start, Clock::now());
+    }
+    dual.valid = build_matching_dual(graph, matching, dual);
+    if (stats != nullptr) {
+      stats->solver_time_ns += elapsed_ns(incremental_start, Clock::now());
+    }
+  }
+}
+
+MatchingResult priced_topk_dynamic_matching(
+    const PreparedDiagram& first, const PreparedDiagram& second,
+    WassersteinMetric metric, std::size_t top_k, WassersteinStats* stats,
+    CandidateRows& candidates, WeightedGraph& graph) {
+  const auto candidate_start = Clock::now();
+  topk_seed_candidates(first, second, metric, top_k, false, stats, candidates);
+  if (stats != nullptr) {
+    stats->candidate_time_ns += elapsed_ns(candidate_start, Clock::now());
+  }
+  const auto graph_start = Clock::now();
+  build_graph_into(candidates, WassersteinGraphStrategy::csr, stats, &first,
+                   &second, metric, graph);
+  if (stats != nullptr) {
+    stats->graph_time_ns += elapsed_ns(graph_start, Clock::now());
+  }
+  SparseDualState dual;
+  const auto solver_start = Clock::now();
+  MatchingResult matching = solve_priced_restricted_graph(graph, stats, dual);
+  PersistentCycleReoptimizer dynamic(first.finite_points().size(),
+                                     second.finite_points().size());
+  dynamic.initialize(candidates, matching, &dual);
+  if (stats != nullptr) {
+    stats->solver_time_ns += elapsed_ns(solver_start, Clock::now());
+  }
+  while (true) {
+    const auto pricing_start = Clock::now();
+    const std::size_t added = price_and_add_edges(
+        first, second, metric, top_k, false, false, dual, stats, candidates);
+    if (stats != nullptr) {
+      stats->pricing_time_ns += elapsed_ns(pricing_start, Clock::now());
+    }
+    if (added == 0) {
+      return matching;
+    }
+    const auto incremental_start = Clock::now();
+    if (!dynamic.append_and_reoptimize(candidates, stats)) {
+      const auto rebuild_start = Clock::now();
+      build_graph_into(candidates, WassersteinGraphStrategy::csr, stats, &first,
+                       &second, metric, graph);
+      if (stats != nullptr) {
+        stats->graph_time_ns += elapsed_ns(rebuild_start, Clock::now());
+        ++stats->sparse_fallbacks;
+      }
+      matching = solve_priced_restricted_graph(graph, stats, dual);
+      dynamic = PersistentCycleReoptimizer(first.finite_points().size(),
+                                           second.finite_points().size());
+      dynamic.initialize(candidates, matching, &dual);
+    } else {
+      matching = dynamic.matching();
+      const auto rebuild_start = Clock::now();
+      build_graph_into(candidates, WassersteinGraphStrategy::csr, stats, &first,
+                       &second, metric, graph);
+      if (stats != nullptr) {
+        stats->graph_time_ns += elapsed_ns(rebuild_start, Clock::now());
+      }
+      dual.valid = build_matching_dual(graph, matching, dual);
+    }
+    if (stats != nullptr) {
+      stats->solver_time_ns += elapsed_ns(incremental_start, Clock::now());
     }
   }
 }
@@ -1969,6 +2733,8 @@ MatchingResult solve_graph(const WeightedGraph& graph,
       return dense_rectangular_sap(graph, true, stats, workspace, false);
     case WassersteinMatcherStrategy::dense_sap_row_reduction:
       return dense_rectangular_sap(graph, true, stats, workspace, true);
+    case WassersteinMatcherStrategy::dense_sap_jv_reduction:
+      return dense_rectangular_sap(graph, true, stats, workspace, false, true);
     case WassersteinMatcherStrategy::sparse_sap:
       return sparse_shortest_augmenting_path(graph, stats);
     case WassersteinMatcherStrategy::adaptive:
@@ -2438,20 +3204,31 @@ double wasserstein_distance_impl(const PreparedDiagram& first,
   if (config.candidates ==
           WassersteinCandidateStrategy::topk_pricing_full_scan ||
       config.candidates == WassersteinCandidateStrategy::topk_pricing_sweep ||
+      config.candidates == WassersteinCandidateStrategy::topk_pricing_kdtree ||
       config.candidates ==
-          WassersteinCandidateStrategy::topk_pricing_sweep_incremental) {
+          WassersteinCandidateStrategy::topk_pricing_sweep_incremental ||
+      config.candidates ==
+          WassersteinCandidateStrategy::topk_pricing_sweep_persistent) {
     CandidateRows local_candidates(rows, columns);
     CandidateRows& candidates =
         workspace == nullptr ? local_candidates : workspace->candidates;
     WeightedGraph local_graph;
     WeightedGraph& graph = workspace == nullptr ? local_graph : workspace->graph;
-    const MatchingResult matching = priced_topk_matching(
-        first, second, config.metric, config.top_k,
+    const MatchingResult matching =
         config.candidates ==
-            WassersteinCandidateStrategy::topk_pricing_full_scan,
-        config.candidates ==
-            WassersteinCandidateStrategy::topk_pricing_sweep_incremental,
-        stats, candidates, graph);
+                WassersteinCandidateStrategy::topk_pricing_sweep_persistent
+            ? priced_topk_persistent_matching(first, second, config.metric,
+                                               config.top_k, stats, candidates,
+                                               graph)
+            : priced_topk_matching(
+                  first, second, config.metric, config.top_k,
+                  config.candidates ==
+                      WassersteinCandidateStrategy::topk_pricing_full_scan,
+                  config.candidates ==
+                      WassersteinCandidateStrategy::topk_pricing_kdtree,
+                  config.candidates == WassersteinCandidateStrategy::
+                                           topk_pricing_sweep_incremental,
+                  stats, candidates, graph);
     if (stats != nullptr) {
       const std::uint64_t call_positive = stats->positive_edges - positive_before;
       stats->pruned_pairs += possible_pairs - call_positive;
@@ -2486,7 +3263,7 @@ double wasserstein_distance_impl(const PreparedDiagram& first,
                                ? 0.0
                                : static_cast<double>(graph.edge_count) /
                                      static_cast<double>(possible_pairs);
-    if (density >= 0.05) {
+    if (density >= 0.15) {
       component_strategy = WassersteinComponentStrategy::none;
     }
   }
@@ -2509,6 +3286,82 @@ double wasserstein_distance_impl(const PreparedDiagram& first,
       stats->component_time_ns += elapsed_ns(component_start, component_stop);
     }
     const auto solver_start = Clock::now();
+    if ((component_strategy == WassersteinComponentStrategy::parallel_dense ||
+         component_strategy == WassersteinComponentStrategy::parallel_sparse) &&
+        components.size() >= 2 && rows + columns >= 256) {
+      struct ParallelComponentResult {
+        MatchingResult matching;
+        WassersteinStats stats;
+      };
+      std::vector<ParallelComponentResult> results(components.size());
+      std::atomic<std::size_t> next_component{0};
+      const std::size_t hardware =
+          (std::max)(std::size_t{2}, static_cast<std::size_t>(
+                                          std::thread::hardware_concurrency()));
+      const std::size_t thread_count =
+          (std::min)({std::size_t{8}, hardware, components.size()});
+      std::vector<std::thread> workers;
+      workers.reserve(thread_count);
+      for (std::size_t worker = 0; worker < thread_count; ++worker) {
+        workers.emplace_back([&] {
+          while (true) {
+            const std::size_t index = next_component.fetch_add(1);
+            if (index >= components.size()) {
+              break;
+            }
+            const Component& component = components[index];
+            WeightedGraph local = component_graph(graph, component);
+            ParallelComponentResult& result = results[index];
+            if (local.rows + local.columns <= tiny_component_limit) {
+              ++result.stats.tiny_components;
+              result.matching = exhaustive_component(local);
+            } else if (component_strategy ==
+                       WassersteinComponentStrategy::parallel_dense) {
+              result.matching = dense_rectangular_sap(
+                  local, true, &result.stats, nullptr, false);
+            } else {
+              result.matching =
+                  sparse_shortest_augmenting_path(local, &result.stats);
+            }
+          }
+        });
+      }
+      for (std::thread& worker : workers) {
+        worker.join();
+      }
+      for (std::size_t index = 0; index < components.size(); ++index) {
+        const Component& component = components[index];
+        const ParallelComponentResult& result = results[index];
+        matching.saving += result.matching.saving;
+        for (std::size_t local_row = 0; local_row < component.rows.size();
+             ++local_row) {
+          const int local_column = result.matching.row_to_column[local_row];
+          if (local_column >= 0) {
+            matching.row_to_column[component.rows[local_row]] = static_cast<int>(
+                component.columns[static_cast<std::size_t>(local_column)]);
+          }
+        }
+        if (stats != nullptr) {
+          stats->active_rows += result.stats.active_rows;
+          stats->active_columns += result.stats.active_columns;
+          stats->augmentations += result.stats.augmentations;
+          stats->sparse_fallbacks += result.stats.sparse_fallbacks;
+          stats->tiny_components += result.stats.tiny_components;
+        }
+      }
+      const auto solver_stop = Clock::now();
+      if (stats != nullptr) {
+        stats->solver_time_ns += elapsed_ns(solver_start, solver_stop);
+      }
+      return distance_from_matching(first, second, config.metric, essential,
+                                    matching);
+    }
+    if (component_strategy == WassersteinComponentStrategy::parallel_dense) {
+      component_strategy = WassersteinComponentStrategy::dense;
+    } else if (component_strategy ==
+               WassersteinComponentStrategy::parallel_sparse) {
+      component_strategy = WassersteinComponentStrategy::tiny_sparse;
+    }
     // Reuse the already measured decomposition through a local loop rather than
     // calling solve_components, which would discover the same components again.
     for (const Component& component : components) {
@@ -2576,7 +3429,9 @@ double wasserstein_distance_impl(const PreparedDiagram& first,
       if (component_strategy == WassersteinComponentStrategy::dense) {
         local_matcher = WassersteinMatcherStrategy::dense_sap;
       } else if (component_strategy == WassersteinComponentStrategy::sparse ||
-                 component_strategy == WassersteinComponentStrategy::tiny_sparse) {
+                 component_strategy == WassersteinComponentStrategy::tiny_sparse ||
+                 component_strategy ==
+                     WassersteinComponentStrategy::parallel_sparse) {
         local_matcher = WassersteinMatcherStrategy::sparse_sap;
       } else if (component_strategy == WassersteinComponentStrategy::adaptive) {
         local_matcher = (std::max)(local.rows, local.columns) <= 24 || density >= 0.20
@@ -2584,8 +3439,11 @@ double wasserstein_distance_impl(const PreparedDiagram& first,
                             : WassersteinMatcherStrategy::sparse_sap;
       }
       MatchingResult local_matching =
-          solve_graph(local, local_matcher, config.warm_start, config.metric, stats,
-                      workspace);
+          solve_graph(local, local_matcher,
+                      local_matcher == WassersteinMatcherStrategy::dense_sap
+                          ? WassersteinWarmStart::none
+                          : config.warm_start,
+                      config.metric, stats, workspace);
       matching.saving += local_matching.saving;
       for (std::size_t local_row = 0; local_row < local.rows; ++local_row) {
         const int local_column = local_matching.row_to_column[local_row];
@@ -2698,8 +3556,12 @@ const char* to_string(WassersteinCandidateStrategy strategy) noexcept {
       return "topk_pricing_full_scan";
     case WassersteinCandidateStrategy::topk_pricing_sweep:
       return "topk_pricing_sweep";
+    case WassersteinCandidateStrategy::topk_pricing_kdtree:
+      return "topk_pricing_kdtree";
     case WassersteinCandidateStrategy::topk_pricing_sweep_incremental:
       return "topk_pricing_sweep_incremental";
+    case WassersteinCandidateStrategy::topk_pricing_sweep_persistent:
+      return "topk_pricing_sweep_persistent";
     case WassersteinCandidateStrategy::adaptive:
       return "adaptive";
   }
@@ -2742,6 +3604,8 @@ const char* to_string(WassersteinMatcherStrategy strategy) noexcept {
       return "dense_sap";
     case WassersteinMatcherStrategy::dense_sap_row_reduction:
       return "dense_sap_row_reduction";
+    case WassersteinMatcherStrategy::dense_sap_jv_reduction:
+      return "dense_sap_jv_reduction";
     case WassersteinMatcherStrategy::sparse_sap:
       return "sparse_sap";
     case WassersteinMatcherStrategy::adaptive:
@@ -2760,6 +3624,10 @@ const char* to_string(WassersteinComponentStrategy strategy) noexcept {
       return "sparse";
     case WassersteinComponentStrategy::tiny_sparse:
       return "tiny_sparse";
+    case WassersteinComponentStrategy::parallel_dense:
+      return "parallel_dense";
+    case WassersteinComponentStrategy::parallel_sparse:
+      return "parallel_sparse";
     case WassersteinComponentStrategy::adaptive:
       return "adaptive";
   }

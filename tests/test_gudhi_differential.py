@@ -74,6 +74,7 @@ def main() -> int:
         (2, 6, 3, 0, 10, 0),
         (2, 7, 3, 9, 9, 1),
     ]
+    multiplicity_config = (2, 5, 3, 0, 11, 0)
     configs = (
         geometric_configs
         if geometric_only
@@ -89,6 +90,8 @@ def main() -> int:
         (as_diagram([[1.0, infinity]]), as_diagram([[1.75, infinity]])),
         (as_diagram([[-infinity, 1.0]]), as_diagram([[-infinity, 2.0]])),
         (as_diagram([[0.0, 1.0], [0.0, 1.0]]), as_diagram([[0.0, 1.0]])),
+        (np.repeat(as_diagram([[0.0, 4.0]]), 128, axis=0),
+         np.repeat(as_diagram([[0.25, 4.25]]), 128, axis=0)),
     ]
 
     generator = np.random.default_rng(0xB0771E)
@@ -112,6 +115,12 @@ def main() -> int:
             actual = core_distance(function, first, second, config)
             assert_same(actual, expected, f"case={case_index}, config={config}")
             comparisons += 1
+
+    for case_index, (first, second) in enumerate(cases[-1:]):
+        expected = float(gudhi.bottleneck_distance(first, second, e=0.0))
+        actual = core_distance(function, first, second, multiplicity_config)
+        assert_same(actual, expected, f"multiplicity case={case_index}")
+        comparisons += 1
 
     print(
         f"gudhi differential: {len(cases)} cases, {len(configs)} configs, "

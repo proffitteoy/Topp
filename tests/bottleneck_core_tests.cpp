@@ -19,6 +19,7 @@ using bottleneck::MatcherStrategy;
 using bottleneck::Point;
 using bottleneck::PreparedDiagram;
 using bottleneck::SolverConfig;
+using bottleneck::SolverStats;
 using bottleneck::ThresholdStrategy;
 using bottleneck::VertexOrder;
 
@@ -63,6 +64,7 @@ std::vector<SolverConfig> all_configs() {
                                           MatcherStrategy::constraint_kuhn,
                                           MatcherStrategy::component_kuhn,
                                           MatcherStrategy::mandatory_flow,
+                                          MatcherStrategy::multiplicity_flow,
                                           MatcherStrategy::adaptive,
                                           MatcherStrategy::hopcroft_karp,
                                           MatcherStrategy::greedy_hopcroft_karp}) {
@@ -235,6 +237,77 @@ void geometric_floating_boundaries() {
   }
 }
 
+void multiplicity_flow_differential() {
+  std::mt19937_64 generator(0xD0B1CA7EULL);
+  const SolverConfig reference{CandidateStrategy::sort_all, ThresholdStrategy::binary,
+                               DistanceStrategy::dense_aos, AdjacencyStrategy::on_demand,
+                               MatcherStrategy::kuhn, VertexOrder::natural};
+  const std::vector<SolverConfig> compressed{
+      {CandidateStrategy::sort_unique_clipped, ThresholdStrategy::binary,
+       DistanceStrategy::recompute_soa, AdjacencyStrategy::on_demand,
+       MatcherStrategy::multiplicity_flow, VertexOrder::natural},
+      {CandidateStrategy::sort_unique_clipped, ThresholdStrategy::quickselect,
+       DistanceStrategy::recompute_soa, AdjacencyStrategy::on_demand,
+       MatcherStrategy::multiplicity_flow, VertexOrder::natural},
+  };
+  std::uniform_int_distribution<int> unique_count(0, 7);
+  std::uniform_int_distribution<int> multiplicity(1, 8);
+  std::uniform_real_distribution<double> birth(-2.0, 2.0);
+  std::uniform_real_distribution<double> persistence(0.0, 2.0);
+
+  for (int trial = 0; trial < 300; ++trial) {
+    const auto make_duplicate_heavy = [&]() {
+      Diagram diagram;
+      const int groups = unique_count(generator);
+      for (int group = 0; group < groups; ++group) {
+        const double point_birth = birth(generator);
+        const Point point{point_birth, point_birth + persistence(generator)};
+        diagram.insert(diagram.end(), static_cast<std::size_t>(multiplicity(generator)), point);
+      }
+      std::shuffle(diagram.begin(), diagram.end(), generator);
+      return diagram;
+    };
+    const Diagram first = make_duplicate_heavy();
+    const Diagram second = make_duplicate_heavy();
+    const double expected = bottleneck::bottleneck_distance(first, second, reference);
+    const PreparedDiagram prepared_first(first);
+    const PreparedDiagram prepared_second(second);
+
+    for (const SolverConfig& config : compressed) {
+      SolverStats stats;
+      const double actual = bottleneck::bottleneck_distance(
+          prepared_first, prepared_second, config, &stats);
+      expect_equal(actual, expected,
+                   "multiplicity differential trial " + std::to_string(trial));
+      if (!bottleneck::bottleneck_within(
+              prepared_first, prepared_second, expected, config)) {
+        fail("multiplicity within rejected exact radius at trial " +
+             std::to_string(trial));
+      }
+      if (expected > 0.0 && bottleneck::bottleneck_within(
+                                prepared_first, prepared_second,
+                                std::nextafter(expected, 0.0), config)) {
+        fail("multiplicity within accepted radius below exact result at trial " +
+             std::to_string(trial));
+      }
+    }
+  }
+
+  const Diagram repeated_first(64, Point{0.0, 4.0});
+  const Diagram repeated_second(64, Point{0.5, 4.5});
+  const PreparedDiagram prepared_first(repeated_first);
+  const PreparedDiagram prepared_second(repeated_second);
+  SolverStats stats;
+  if (!bottleneck::bottleneck_within(prepared_first, prepared_second, 0.5,
+                                     compressed.front(), &stats)) {
+    fail("multiplicity decision rejected a feasible repeated threshold");
+  }
+  if (stats.multiplicity_groups != 2 || stats.multiplicity_points_removed != 126 ||
+      stats.capacity_edges != 1) {
+    fail("multiplicity decision did not use the compressed capacity graph");
+  }
+}
+
 void adaptive_dispatcher_differential() {
   std::mt19937_64 generator(0xADAF71EULL);
   const SolverConfig reference{CandidateStrategy::sort_all, ThresholdStrategy::binary,
@@ -265,6 +338,34 @@ void adaptive_dispatcher_differential() {
   expect_equal(bottleneck::bottleneck_distance(separated_first, separated_second, adaptive),
                bottleneck::bottleneck_distance(separated_first, separated_second, reference),
                "adaptive no-cross exact shortcut");
+
+  const Diagram repeated_first(512, Point{0.0, 4.0});
+  const Diagram repeated_second(512, Point{0.25, 4.25});
+  SolverStats stats;
+  expect_equal(bottleneck::bottleneck_distance(
+                   PreparedDiagram(repeated_first), PreparedDiagram(repeated_second),
+                   adaptive, &stats),
+               bottleneck::bottleneck_distance(repeated_first, repeated_second, reference),
+               "adaptive multiplicity route");
+  if (stats.multiplicity_points_removed == 0) {
+    fail("adaptive dispatcher did not select multiplicity flow");
+  }
+  SolverStats within_stats;
+  if (!bottleneck::bottleneck_within(
+          PreparedDiagram(repeated_first), PreparedDiagram(repeated_second), 0.25,
+          adaptive, &within_stats) || within_stats.multiplicity_points_removed == 0) {
+    fail("adaptive within did not select multiplicity flow");
+  }
+
+  SolverStats identity_stats;
+  expect_equal(bottleneck::bottleneck_distance(
+                   PreparedDiagram(repeated_first), PreparedDiagram(repeated_first),
+                   adaptive, &identity_stats),
+               0.0, "adaptive repeated identity certificate");
+  if (identity_stats.multiplicity_groups != 0 ||
+      identity_stats.geometric_queries != 0) {
+    fail("identity certificate should bypass matching kernels");
+  }
 }
 
 void batch_cases() {
@@ -301,6 +402,7 @@ int main() {
   randomized_differential();
   geometric_differential();
   geometric_floating_boundaries();
+  multiplicity_flow_differential();
   adaptive_dispatcher_differential();
   batch_cases();
   std::cout << "bottleneck_core_tests: all checks passed\n";

@@ -1,6 +1,8 @@
-# Threads and the GIL
+# 线程与 GIL
 
-Native distance calculations release the Python GIL. A `PreparedDiagram` is immutable and may be read concurrently.
+[English](https://proffitteoy.github.io/Topp/en/guide/threads.html)
+
+原生距离计算会释放 Python GIL。`PreparedDiagram` 不可变，可以被多个线程并发读取。
 
 ```python
 from concurrent.futures import ThreadPoolExecutor
@@ -20,6 +22,6 @@ with ThreadPoolExecutor(max_workers=3) as pool:
     )
 ```
 
-Do not concurrently write to the same `out` array without application-level synchronization. Separate output arrays are independent.
+不要在没有应用层同步的情况下并发写入同一个 `out` 数组。不同的输出数组相互独立。
 
-Threading is useful only when the surrounding workload and diagram sizes justify its scheduling overhead. Benchmark the real application rather than assuming that more workers are faster.
+只有周边工作负载和 diagram 规模足以抵消调度开销时，线程才有帮助。请对真实应用进行 benchmark，不要假设更多 worker 一定更快。

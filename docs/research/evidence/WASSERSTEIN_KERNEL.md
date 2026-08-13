@@ -20,6 +20,9 @@
 - `sweep_two_pointer`：W1 merged-event active sweep；W2 回退 binary window；
 - `topk_pricing_full_scan`：每行仅物化 top-k positive saving，restricted solve 后以全对扫描做 exact pricing；
 - `topk_pricing_sweep`：相同 active-set 流程，但 seed/pricing 只枚举 rotated geometric window；
+- `topk_pricing_kdtree`：按 rotated `u` 建 exact branch-and-bound tree，节点缓存 `u` 区间、最大 `v` 和最小列 dual；
+- `topk_pricing_sweep_incremental`：保留上一轮 matching，以重建 residual network 后的 exact negative-cycle cancellation 做 D4 matching-incremental 对照；
+- `topk_pricing_sweep_persistent`：跨 pricing round 持久复用 residual network、matching 和 Bellman–Ford scratch，只向网络追加新候选边；
 - `adaptive`：小图 scalar；高 window density 的至少 262144 个候选对使用 parallel，较小 dense 输入用 AVX2/blocked；其余用 binary sweep。
 
 ### Weighted graph
@@ -37,6 +40,7 @@
 - `dense_hungarian`：完整方阵 baseline；
 - `dense_sap`：独立的矩形 shortest augmenting path；删除无正边的行列、以较短侧为 augmentation 侧、不补成方阵，并跨 augmentation 复用 scan buffers；
 - `dense_sap_row_reduction`：独立 exact 实验；先做 row dual reduction，并把无冲突的 row-minimum 零 reduced-cost 边作为初始 partial matching，再只增广冲突行；
+- `dense_sap_jv_reduction`：column reduction、reduction transfer 和两轮 augmenting-row reduction 的直接矩形迁移；返回前以 matching LP dual certificate 验证，失败则回退 clean SAP；
 - `sparse_sap`：CSR/row-list residual graph 上的 exact primal-dual Dijkstra；
 - `priced restricted SAP`：`k=2/4/8/16/32`，component-aware restricted solve，返回可验证的 matching LP dual；
 - `component + dense`；
@@ -67,7 +71,7 @@ Wq,p(X,Y)^q = D - max_M Σ sij
 
 - 手工 empty、identity、shift、diagonal、zero-saving boundary、essential 和 disconnected component；
 - 每个 metric 150 组 `n,m<=5` exhaustive partial-matching oracle；
-- 每个 metric 500 组随机 diagram，34 条实验配置逐项差分；
+- 每个 metric 500 组随机 diagram，52 条实验配置逐项差分；
 - duplicate、equal cost/tie、near-diagonal、extreme coordinates、`n≠m`、finite+essential 混合；
 - candidate/graph/matcher/component/adaptive 交换 diagram 后的对称性；
 - GCC 和 MSVC/AVX2 两套构建。
@@ -90,7 +94,7 @@ build\manual\wasserstein_core_bench.exe `
   --pattern near_diagonal
 ```
 
-每轮随机打乱 38 个配置的执行顺序，报告 median/p95，并拆分：
+每轮随机打乱 56 个配置的执行顺序，报告 median/p95，并拆分：
 
 ```text
 T_prepare + T_candidate + T_graph + T_component + T_solver + T_pricing
@@ -205,6 +209,25 @@ MSVC，5 repetitions × 7–9 randomized rounds，`dense_sap` 与 `row_reduced_d
 
 W1 的 best-column 冲突较少，512 档增广约减少 46%，四类 512/非对称输入端到端均有 1.3%–9.4% 收益；128 uniform 的额外 reduction scan 反而使总时间退化 5.3%。W2 的冲突率高，512 档只减少 1%–8% 增广，收益不稳定。因此 adaptive 仅在 `metric=W1-L∞ && max(n,m)>=512` 且原本已选择 dense matcher 时启用 row reduction；W2 和较小 W1 保留原矩形 SAP。
 
+### 完整 JV 初始化直接迁移
+
+`dense_sap_jv_reduction` 增加了 column reduction、reduction transfer 和两轮 augmenting-row reduction，再把剩余 free rows 交给现有矩形 SAP。由于经典 JV 初始化依赖方阵/虚拟指派约定，直接迁移到“短侧全指派、长侧可空”的 optional rectangular matching 后不能仅凭内部势函数假定 exact；因此每次先从返回 matching 构造并验证 LP dual certificate，失败时计入 `jv_fallbacks` 并回退 clean SAP。
+
+MSVC 同进程随机轮序摘要：
+
+| 场景 | metric | clean SAP | row reduction | JV direct | JV/clean | clean aug. | JV aug. | fallback |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| uniform 128 | W1 | 1.035 ms | 0.983 ms | 2.574 ms | 2.49× | 2639 | 3563 | 21/21 |
+| uniform 128 | W2 | 1.453 ms | 1.402 ms | 3.643 ms | 2.51× | 2681 | 2730 | 7/21 |
+| clustered 128 | W1 | 1.378 ms | 1.297 ms | 3.429 ms | 2.49× | 5760 | 1539 | 0/45 |
+| clustered 128 | W2 | 4.459 ms | 4.810 ms | 11.366 ms | 2.55× | 5760 | 7749 | 27/45 |
+| clustered 512 | W1 | 32.35 ms | 31.29 ms | 117.12 ms | 3.62× | 10752 | 3213 | 0/21 |
+| clustered 512 | W2 | 241.62 ms | 237.26 ms | 414.60 ms | 1.72× | 10752 | 8848 | 0/21 |
+| imbalanced 128×512 | W1 | 1.053 ms | 1.057 ms | 3.196 ms | 3.04× | 1920 | 330 | 15/15 |
+| imbalanced 128×512 | W2 | 2.133 ms | 2.362 ms | 9.303 ms | 4.36× | 1920 | 1340 | 15/15 |
+
+clustered W1 的 JV 初始化能稳定通过 exact certificate，并把增广次数减少约 70%；但多次全矩阵 reduction scan 和 dual certificate 构造仍远超节省的 SAP 工作。uniform/非对称图还暴露了经典方阵 reduction transfer 不能无条件作为矩形 optional matching 初态的问题。结论：完整 JV 初始化的直接矩形迁移实验完成，保留 exact-guarded 显式负面对照，不进入 adaptive；已冻结的基础 row reduction 仍是 W1 large dense 的赢家。
+
 ## Large-N top-k + exact pricing 实验
 
 新增两条独立 exact active-set 路线，均测试 `k=2/4/8/16/32`：
@@ -235,7 +258,55 @@ MSVC 同进程随机轮序摘要：
 
 full scan 的 512 near-diagonal pricing 从约 549 万次 pair 检查降到 sweep 的约 1.1 万次；说明 rotated pricing oracle 有效。uniform 512 的 peak graph 从 dense 2 MiB 降到约 189 KiB、物化边降约 72%，但 repeated sparse solve 令总时间慢 26.5×。1024/2048 near-diagonal 的 `k=32` 已覆盖全部正边，没有产生 active-set 边数收益；接近持平来自相同 solver 主体，不能算 pricing 胜出。
 
-结论：D1 top-k、D2 restricted solve、D3 full/sweep exact pricing 已形成可复现实验，但当前每轮仍从头重建 residual network 和重解 matching。它在所有有代表性的 512/1024 场景都没有击败现有 adaptive，故不进入默认。下一步必须先做 D4 incremental resolve；在此之前继续调 top-k 门限没有意义。KD-tree pricing 也保留到 incremental state 可复用之后。
+### D4 matching-incremental baseline
+
+`topk_pricing_sweep_incremental` 第一轮仍使用 component-aware restricted solve；后续 pricing 加边后保留上一轮 matching，重建 residual network，以该 matching 初始化 flow，并通过 `sink→source` 零成本边上的 Bellman–Ford 式 negative-cycle cancellation 恢复 exact optimum。每轮结束仍重建并验证 matching LP dual，因此该分支复用了 matching，但尚未持久复用 residual network、dual 和 workspace。
+
+当前 39 条配置在 MinGW GCC 13.2 和 MSVC/AVX2 下均通过 exhaustive/random/tie/duplicate/非对称与 near-identical 回归。MSVC 同进程随机轮序结果：
+
+| 场景 | metric | sweep rebuild | matching incremental | incremental/rebuild | adaptive | pricing violations |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| uniform 128, `k=8` | W1 | 24.64 ms | 194.50 ms | 7.89× | 1.38 ms | 4725 |
+| uniform 128, `k=8` | W2 | 22.88 ms | 853.60 ms | 37.31× | 2.17 ms | 23639 |
+| uniform 128, `k=32` | W1 | 16.62 ms | 23.58 ms | 1.42× | 1.38 ms | 42 |
+| uniform 128, `k=32` | W2 | 12.77 ms | 10.27 ms | 0.80× | 2.17 ms | 0 |
+
+512 uniform 的 `k=32`、两种 metric、1 repetition × 5 randomized rounds 配对在 10 分钟上限内未完成；该组没有用超时前的部分轮次生成 median。cycle cancellation 只有在几乎没有 violation 时可能局部微赢，一旦 active set 需要实质扩张，Bellman–Ford 式修复就会远慢于重解；即使 128 W2 `k=32` 局部快约 20%，仍比 adaptive 慢约 4.7×。因此这条 exact matching-incremental baseline 保留为显式负面对照，不进入 adaptive，也不再扩大规模矩阵。
+
+结论：D1 top-k、D2 restricted solve、D3 full/sweep exact pricing，以及一条 D4 matching-incremental baseline 已形成可复现实验。当前 active-set 路线没有击败有代表性的现有 adaptive；下一步 D4 只继续研究真正持久的 residual/dual/workspace 增量求解。KD-tree pricing 保留到增量 solver 的主体成本被解决之后。
+
+### D4 persistent residual baseline
+
+`topk_pricing_sweep_persistent` 在首轮 restricted solve 后构造一次 residual network，并保留 source/row/column/sink 边、当前 flow matching、每行已知边索引、Bellman–Ford distance/predecessor scratch；pricing 加边后只追加对应 residual edge，不再重建 residual network。候选 CSR 目前仍为 matching LP dual certificate 重建，因此这条分支完成了 residual/matching/scratch 持久化，但还没有消除 graph-layer certificate view。
+
+MSVC 同进程随机轮序摘要：
+
+| 场景 | metric/k | sweep rebuild | matching incremental | persistent residual | persistent / matching incremental | adaptive |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| uniform 64 | W1, `k=8` | 2.669 ms | 3.144 ms | 3.141 ms | 1.00× | 0.211 ms |
+| uniform 64 | W2, `k=8` | 3.699 ms | 11.014 ms | 10.944 ms | 0.99× | 0.241 ms |
+| uniform 64 | W1, `k=32` | 1.827 ms | 1.673 ms | 1.819 ms | 1.09× | 0.211 ms |
+| uniform 128 | W1, `k=8` | 15.13 ms | 112.35 ms | 113.90 ms | 1.01× | 0.974 ms |
+| uniform 128 | W2, `k=8` | 21.32 ms | 616.11 ms | 638.72 ms | 1.04× | 1.251 ms |
+| uniform 128 | W2, `k=32` | 10.02 ms | 9.64 ms | 9.72 ms | 1.01× | 1.251 ms |
+
+residual 容器与 scratch 的持久复用没有产生可测收益，差异都在约 ±9% 的轮间范围内；小 `k` 的灾难性退化完全保留。热点因此被进一步定位为每轮全 residual graph 的 Bellman–Ford negative-cycle detection，而不是 network allocation、matching materialization 或 scratch 初始化。结论：persistent exact baseline 完成并保留为显式负面对照，不进入 adaptive；继续优化这条路线必须更换增量最短路/负环算法，而不是继续做容器复用。
+
+### E3 KD-tree pricing
+
+`topk_pricing_kdtree` 与 sweep 使用相同 top-k seed 和 restricted solver，只替换 pricing oracle。树按 second diagram 的 rotated `u` 排序；每个节点缓存 `min/max u`、`max v` 与当前 `min β`，由此给出 W1 的 `2 min(v_i,max_v)-min|du|` 或 W2 的 `4 v_i max_v-2 min|du|²` saving 上界。若上界不足以超过 `α_i+min β` 则整棵子树 exact 剪枝；节点摘要的 binary64 舍入使用向外容差，dual 无效时回退 sweep 全枚举。
+
+MSVC 同进程随机轮序摘要：
+
+| 场景 | metric/k | sweep priced edges | tree priced edges | sweep pricing | tree pricing | sweep total | tree total |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| uniform 128 | W1, `k=8` | 226863 | 4718 | 0.577 ms | 0.735 ms | 18.64 ms | 20.47 ms |
+| uniform 128 | W2, `k=8` | 242473 | 23639 | 0.760 ms | 1.399 ms | 28.84 ms | 28.76 ms |
+| near-diagonal 128 | W1, `k=32` | 700 | 0 | 0.013 ms | 0.185 ms | 0.145 ms | 0.276 ms |
+| uniform 512 | W1, `k=32` | 975330 | 1280 | 9.002 ms | 6.511 ms | 588.8 ms | 623.5 ms |
+| uniform 512 | W2, `k=32` | 1093470 | 75850 | 17.590 ms | 17.049 ms | 1088.8 ms | 1051.1 ms |
+
+树在 128 uniform 将叶子 exact pricing 访问减少 90%–98%，在 512 W1 减少 99.9%，说明 E3 上界和剪枝有效；但 128 的建树/遍历开销高于简单连续 sweep，near-diagonal 即使零叶子访问仍慢一个数量级。512 的 pricing 局部最多缩短约 28%，总耗时由 repeated sparse solve 主导，W1 反而慢约 5.9%，W2 约快 3.5% 但仍比 adaptive 慢约 17×。结论：E3 exact 实验完成并保留显式配置，不进入 adaptive；在 active-set solver 主体未解决前不实现 E4 adaptive pricing。
 
 ## B3 fixed-small-degree adjacency 实验
 
@@ -299,7 +370,7 @@ essential cost
 + unmatched X/Y 点的原始 diagonal cost
 ```
 
-因此 solver 仍可在 positive-saving 图上优化，但最终数值不再执行两个约为同一大数的 `D-S*`。新增 128 点 dense W2 near-identical 回归，真实距离约 `3.4e-8`；34 个 candidate/graph/matcher/component/duplicate/pricing 配置在 MinGW GCC 13.2 与 MSVC/AVX2 下均以 `2e-14` 对齐。性能矩阵的跨路径门限已从临时的 `2e-10` 收紧回 `2e-12`。
+因此 solver 仍可在 positive-saving 图上优化，但最终数值不再执行两个约为同一大数的 `D-S*`。新增 128 点 dense W2 near-identical 回归，真实距离约 `3.4e-8`；52 个 candidate/graph/matcher/component/duplicate/pricing 配置在 MinGW GCC 13.2 与 MSVC/AVX2 下均以 `2e-14` 对齐。性能矩阵的跨路径门限已从临时的 `2e-10` 收紧回 `2e-12`。
 
 MSVC 复测中，128 点 uniform adaptive 约 `1.04 ms`（W1）/`1.02 ms`（W2），near-diagonal adaptive 约 `31.6 μs`/`29.9 μs`，没有出现与 matching materialization 相关的数量级回退。
 
@@ -336,14 +407,40 @@ MSVC，128×128，5 repetitions × 7–9 randomized rounds：
 - unconditional duplicate flow：无重复 uniform 会慢约一个数量级；只保留 exact 对照，默认使用 1/16 compression-ratio dispatcher；
 - 固定只看 `n*m` 的 dispatcher：已删除。
 
+## Parallel component 实验
+
+新增 `parallel_sparse` 和 `parallel_dense` 两条 exact component strategy。component discovery 仍为串行；分解完成后，以最多 8 个 worker 通过原子索引调度独立 component，每个 worker 只写自己的 matching/stats，主线程按原 component 顺序合并，避免浮点归并顺序和 matching 冲突。小于 256 个总顶点或少于两个 component 时回退对应串行分支。
+
+为避免只在 `1×1` tiny 图上测线程开销，benchmark 新增 `multi_component`：每个 component 固定为独立的 `32×32` dense positive-saving 子图。MSVC 同进程随机轮序摘要：
+
+| N | metric | component dense | parallel dense | component sparse | parallel sparse | parallel dense / serial dense |
+| ---: | --- | ---: | ---: | ---: | ---: | ---: |
+| 256 | W1 | 0.878 ms | 1.300 ms | 7.77 ms | 3.09 ms | 1.48× |
+| 256 | W2 | 0.694 ms | 1.354 ms | 7.82 ms | 3.18 ms | 1.95× |
+| 512 | W1 | 1.506 ms | 2.212 ms | 17.00 ms | 4.87 ms | 1.47× |
+| 512 | W2 | 1.187 ms | 1.678 ms | 15.77 ms | 4.47 ms | 1.41× |
+| 1024 | W1 | 2.592 ms | 3.731 ms | — | 8.15 ms | 1.44× |
+| 1024 | W2 | 2.223 ms | 2.469 ms | — | 6.78 ms | 1.11× |
+| 2048 | W1 | 5.415 ms | 5.509 ms | — | 14.91 ms | 1.02× |
+| 2048 | W2 | 5.653 ms | 6.408 ms | — | 13.66 ms | 1.13× |
+
+parallel sparse 相对串行 sparse 在多个中型分量上可快约 1.9–3.5×，但这个局部对照不是端到端 winner：串行 component dense 又比 parallel sparse 快 2.4–4.6×。parallel dense 直到 2048 W1 才接近持平，所有稳定配置仍未胜出。512 个 `1×1` adversarial-sparse component 上，线程化还会把约 0.18–0.20 ms 放大到 0.72–0.78 ms。结论：parallel component 工程实验完成，两条配置保留为显式 exact 对照，不进入 adaptive；当前赢家是串行 component+dense。
+
+该实验同时暴露了原 adaptive 的结构盲点：它在全局 density `>=0.05` 时无条件跳过 component，导致 512 点、16 个独立 `32×32` dense component 的输入走全局 sparse/dense matcher，耗时约 `274–307 ms`。component skip 阈值现已与 dense matcher 的 `ρ=0.15` 对齐；density `0.062–0.125` 会先分解，再按局部 density 选择 dense SAP，且局部 dense component 关闭无收益的 global-greedy 排序。MSVC 512 点复测：
+
+| metric | adaptive before | adaptive after | explicit component dense | after / explicit |
+| --- | ---: | ---: | ---: | ---: |
+| W1 | 307.4 ms | 1.792 ms | 1.699 ms | 1.05× |
+| W2 | 296.3 ms | 1.390 ms | 1.232 ms | 1.13× |
+
+同一 dispatcher 修改不影响 density `0.212–0.220` 的 uniform 512，仍跳过 component 并走原 dense matcher。该结构修正进入 adaptive。
+
 ## 尚未完成的第二轮
 
 以下仍是 `../proposals/wasserstein第二阶段.md` 的未完成项，不能把当前状态称为完整 Wasserstein 优化结束：
 
-1. 完整 JV column reduction transfer / augmenting-row reduction（独立矩形 dense SAP 和基础 row-reduction partial matching 已完成，但不冒充完整 JV）；
-2. incremental resolve 和 KD-tree pricing（top-k restricted solve、matching dual、full/sweep exact pricing 已完成并因端到端负优化暂不进入 adaptive）；
-3. parallel component（parallel candidate、native one-to-many、caller buffer 和 reusable candidate/graph/dense-SAP workspace 已完成并单独测量）；
-4. GUDHI/POT exact 和 Hera exact 四层外部基线；
-5. real persistence diagrams。
+1. 更高效的增量最短路/负环算法与 E4 adaptive pricing（matching、residual 和 scratch 持久化 baseline 已完成，确认容器复用不是瓶颈；active-set 各路径因端到端负优化不进入 adaptive）；
+2. GUDHI/POT exact 和 Hera exact 四层外部基线；
+3. real persistence diagrams。
 
 这些完成并重新跑完整 8–8192 median/p95 矩阵后，才能按第二阶段文档的标准宣告整体完成。

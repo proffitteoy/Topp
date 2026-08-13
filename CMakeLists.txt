@@ -80,6 +80,10 @@ if(BOTTLENECK_BUILD_BENCHMARKS)
     target_link_libraries(bottleneck_large_bench PRIVATE bottleneck::core)
     target_compile_features(bottleneck_large_bench PRIVATE cxx_std_20)
 
+    add_executable(bottleneck_multiplicity_bench benchmarks/bottleneck_multiplicity_bench.cpp)
+    target_link_libraries(bottleneck_multiplicity_bench PRIVATE bottleneck::core)
+    target_compile_features(bottleneck_multiplicity_bench PRIVATE cxx_std_20)
+
     add_executable(wasserstein_core_bench benchmarks/wasserstein_core_bench.cpp)
     target_link_libraries(wasserstein_core_bench PRIVATE bottleneck::core)
     target_compile_features(wasserstein_core_bench PRIVATE cxx_std_20)

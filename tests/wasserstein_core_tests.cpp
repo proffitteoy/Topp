@@ -240,6 +240,10 @@ std::vector<WassersteinConfig> experiment_configs(WassersteinMetric metric) {
        WassersteinGraphStrategy::dense_matrix,
        WassersteinMatcherStrategy::dense_sap_row_reduction,
        WassersteinComponentStrategy::none, WassersteinWarmStart::none},
+      {metric, WassersteinCandidateStrategy::dense_scalar,
+       WassersteinGraphStrategy::dense_matrix,
+       WassersteinMatcherStrategy::dense_sap_jv_reduction,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none},
       {metric, WassersteinCandidateStrategy::dense_blocked,
        WassersteinGraphStrategy::dense_matrix,
        WassersteinMatcherStrategy::dense_sap,
@@ -313,6 +317,16 @@ std::vector<WassersteinConfig> experiment_configs(WassersteinMetric metric) {
        WassersteinMatcherStrategy::sparse_sap,
        WassersteinComponentStrategy::tiny_sparse,
        WassersteinWarmStart::row_max},
+      {metric, WassersteinCandidateStrategy::sweep_binary,
+       WassersteinGraphStrategy::csr,
+       WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::parallel_dense,
+       WassersteinWarmStart::none},
+      {metric, WassersteinCandidateStrategy::sweep_binary,
+       WassersteinGraphStrategy::csr,
+       WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::parallel_sparse,
+       WassersteinWarmStart::none},
       {metric, WassersteinCandidateStrategy::topk_pricing_full_scan,
        WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
        WassersteinComponentStrategy::none, WassersteinWarmStart::none,
@@ -353,6 +367,26 @@ std::vector<WassersteinConfig> experiment_configs(WassersteinMetric metric) {
        WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
        WassersteinComponentStrategy::none, WassersteinWarmStart::none,
        WassersteinDuplicateStrategy::none, 32},
+      {metric, WassersteinCandidateStrategy::topk_pricing_kdtree,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 2},
+      {metric, WassersteinCandidateStrategy::topk_pricing_kdtree,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 4},
+      {metric, WassersteinCandidateStrategy::topk_pricing_kdtree,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 8},
+      {metric, WassersteinCandidateStrategy::topk_pricing_kdtree,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 16},
+      {metric, WassersteinCandidateStrategy::topk_pricing_kdtree,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 32},
       {metric, WassersteinCandidateStrategy::topk_pricing_sweep_incremental,
        WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
        WassersteinComponentStrategy::none, WassersteinWarmStart::none,
@@ -370,6 +404,26 @@ std::vector<WassersteinConfig> experiment_configs(WassersteinMetric metric) {
        WassersteinComponentStrategy::none, WassersteinWarmStart::none,
        WassersteinDuplicateStrategy::none, 16},
       {metric, WassersteinCandidateStrategy::topk_pricing_sweep_incremental,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 32},
+      {metric, WassersteinCandidateStrategy::topk_pricing_sweep_persistent,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 2},
+      {metric, WassersteinCandidateStrategy::topk_pricing_sweep_persistent,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 4},
+      {metric, WassersteinCandidateStrategy::topk_pricing_sweep_persistent,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 8},
+      {metric, WassersteinCandidateStrategy::topk_pricing_sweep_persistent,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 16},
+      {metric, WassersteinCandidateStrategy::topk_pricing_sweep_persistent,
        WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
        WassersteinComponentStrategy::none, WassersteinWarmStart::none,
        WassersteinDuplicateStrategy::none, 32},
@@ -407,9 +461,13 @@ void brute_force_differential() {
       const Diagram first = random_diagram(generator, static_cast<std::size_t>(size(generator)));
       const Diagram second = random_diagram(generator, static_cast<std::size_t>(size(generator)));
       const double expected = brute_force_distance(first, second, metric);
-      for (const WassersteinConfig& config : configs) {
+      for (std::size_t config_index = 0; config_index < configs.size();
+           ++config_index) {
+        const WassersteinConfig& config = configs[config_index];
         expect_near(bottleneck::wasserstein_distance(first, second, config), expected,
-                    "variant vs brute-force trial " + std::to_string(trial));
+                    "variant vs brute-force config " +
+                        std::to_string(config_index) + " trial " +
+                        std::to_string(trial));
       }
     }
   }
@@ -448,8 +506,12 @@ void variant_differential() {
                  WassersteinCandidateStrategy::topk_pricing_full_scan ||
              config.candidates ==
                  WassersteinCandidateStrategy::topk_pricing_sweep ||
+             config.candidates ==
+                 WassersteinCandidateStrategy::topk_pricing_kdtree ||
              config.candidates == WassersteinCandidateStrategy::
-                                      topk_pricing_sweep_incremental)) {
+                                      topk_pricing_sweep_incremental ||
+             config.candidates == WassersteinCandidateStrategy::
+                                      topk_pricing_sweep_persistent)) {
           std::cerr << "top-k diagnostic: rounds=" << stats.pricing_rounds
                     << ", priced=" << stats.priced_edges
                     << ", violations=" << stats.pricing_violations
