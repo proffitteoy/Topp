@@ -16,6 +16,12 @@
 - [Bottleneck 实验登记](evidence/KERNEL_EXPERIMENTS.md)
 - [Bottleneck 第一阶段报告](evidence/PHASE1_KERNEL_REPORT.md)
 - [Bottleneck 第二阶段 multiplicity 报告](evidence/PHASE2_MULTIPLICITY_REPORT.md)
+- [Bottleneck 第二阶段 mandatory partial flow 报告](evidence/PHASE2_MANDATORY_FLOW_REPORT.md)
+- [Bottleneck 第二阶段 geometry/component 报告](evidence/PHASE2_GEOMETRY_COMPONENT_REPORT.md)
+- [Bottleneck 第二阶段 search strategy 报告](evidence/PHASE2_SEARCH_REPORT.md)
+- [Bottleneck 第二阶段 batch reuse 报告](evidence/PHASE2_BATCH_REPORT.md)
+- [Bottleneck 第二阶段 adaptive router 报告](evidence/PHASE2_ROUTER_REPORT.md)
+- [Bottleneck 第二阶段 Wasserstein assist 报告](evidence/PHASE2_WASSERSTEIN_ASSIST_REPORT.md)
 - [Wasserstein 内核实验记录](evidence/WASSERSTEIN_KERNEL.md)
 
 ## Proposals

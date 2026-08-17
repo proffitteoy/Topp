@@ -35,7 +35,7 @@ Choose Topp when you:
 - repeatedly compare one query with many candidates and want to reuse preprocessing, workspace, or output memory;
 - want a typed Python API with NumPy as its only runtime dependency.
 
-Topp **does not compute persistence diagrams** and does not provide arbitrary `(order, internal_p)` pairs, approximate/GPU distances, or a complete TDA workflow. Use a broader TDA library when those capabilities are required. The public documentation includes a [Python batch-distance comparison with GUDHI and giotto-tda](https://proffitteoy.github.io/Topp/en/#python-batch-distance-performance); the results apply only to the stated environment and call pattern.
+Topp **does not compute persistence diagrams** and does not provide arbitrary `(order, internal_p)` pairs, approximate/GPU distances, or a complete TDA workflow. Use a broader TDA library when those capabilities are required. The public documentation includes a [Python batch-distance comparison with GUDHI and Hera](https://proffitteoy.github.io/Topp/en/#python-batch-distance-performance); the results apply only to the stated environment and call pattern.
 
 ## Provided capabilities
 

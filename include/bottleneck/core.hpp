@@ -82,6 +82,7 @@ struct SolverConfig {
   AdjacencyStrategy adjacency = AdjacencyStrategy::adaptive;
   MatcherStrategy matcher = MatcherStrategy::adaptive;
   VertexOrder vertex_order = VertexOrder::degree_ascending;
+  double lower_bound_hint = 0.0;
 };
 
 struct SolverStats {
@@ -97,16 +98,28 @@ struct SolverStats {
   std::uint64_t forced_matches = 0;
   std::uint64_t component_count = 0;
   std::uint64_t component_rejects = 0;
+  std::uint64_t largest_component_vertices = 0;
   std::uint64_t lower_bound_rejects = 0;
   std::uint64_t geometric_queries = 0;
   std::uint64_t kd_nodes_visited = 0;
   std::uint64_t refinement_rounds = 0;
+  std::uint64_t incremental_groups_added = 0;
+  std::uint64_t incremental_rollbacks = 0;
   std::uint64_t multiplicity_groups = 0;
   std::uint64_t multiplicity_points_removed = 0;
   std::uint64_t capacity_edges = 0;
   std::uint64_t x_window_candidates = 0;
+  std::uint64_t router_x_window_pairs = 0;
   std::uint64_t mandatory_vertices = 0;
   std::uint64_t optional_pairs_pruned = 0;
+  std::uint64_t router_identity_shortcuts = 0;
+  std::uint64_t router_no_cross_shortcuts = 0;
+  std::uint64_t router_multiplicity_routes = 0;
+  std::uint64_t router_mandatory_routes = 0;
+  std::uint64_t router_refinement_routes = 0;
+  std::uint64_t router_quickselect_routes = 0;
+  std::uint64_t lower_bound_hints_tested = 0;
+  std::uint64_t lower_bound_hints_accepted = 0;
 };
 
 class PreparedDiagram {

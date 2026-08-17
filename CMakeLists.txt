@@ -84,6 +84,31 @@ if(BOTTLENECK_BUILD_BENCHMARKS)
     target_link_libraries(bottleneck_multiplicity_bench PRIVATE bottleneck::core)
     target_compile_features(bottleneck_multiplicity_bench PRIVATE cxx_std_20)
 
+    add_executable(bottleneck_mandatory_bench benchmarks/bottleneck_mandatory_bench.cpp)
+    target_link_libraries(bottleneck_mandatory_bench PRIVATE bottleneck::core)
+    target_compile_features(bottleneck_mandatory_bench PRIVATE cxx_std_20)
+
+    add_executable(bottleneck_component_bench benchmarks/bottleneck_component_bench.cpp)
+    target_link_libraries(bottleneck_component_bench PRIVATE bottleneck::core)
+    target_compile_features(bottleneck_component_bench PRIVATE cxx_std_20)
+
+    add_executable(bottleneck_geometry_bench benchmarks/bottleneck_geometry_bench.cpp)
+    target_link_libraries(bottleneck_geometry_bench PRIVATE bottleneck::core)
+    target_compile_features(bottleneck_geometry_bench PRIVATE cxx_std_20)
+
+    add_executable(bottleneck_search_bench benchmarks/bottleneck_search_bench.cpp)
+    target_link_libraries(bottleneck_search_bench PRIVATE bottleneck::core)
+    target_compile_features(bottleneck_search_bench PRIVATE cxx_std_20)
+
+    add_executable(bottleneck_router_bench benchmarks/bottleneck_router_bench.cpp)
+    target_link_libraries(bottleneck_router_bench PRIVATE bottleneck::core)
+    target_compile_features(bottleneck_router_bench PRIVATE cxx_std_20)
+
+    add_executable(bottleneck_wasserstein_assist_bench
+      benchmarks/bottleneck_wasserstein_assist_bench.cpp)
+    target_link_libraries(bottleneck_wasserstein_assist_bench PRIVATE bottleneck::core)
+    target_compile_features(bottleneck_wasserstein_assist_bench PRIVATE cxx_std_20)
+
     add_executable(wasserstein_core_bench benchmarks/wasserstein_core_bench.cpp)
     target_link_libraries(wasserstein_core_bench PRIVATE bottleneck::core)
     target_compile_features(wasserstein_core_bench PRIVATE cxx_std_20)

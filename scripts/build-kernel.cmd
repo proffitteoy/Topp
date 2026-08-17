@@ -54,7 +54,37 @@ cl.exe /nologo /std:c++20 %BOTTLENECK_COMPILE_OPT% /EHsc /W4 /permissive- /Zc:__
   /Fe:%BOTTLENECK_BUILD_DIR%\bottleneck_multiplicity_bench.exe %BOTTLENECK_LINK_OPT%
 if errorlevel 1 exit /b %errorlevel%
 
+cl.exe /nologo /std:c++20 %BOTTLENECK_COMPILE_OPT% /EHsc /W4 /permissive- /Zc:__cplusplus /DBOTTLENECK_HAVE_AVX2_KERNEL=1 /Iinclude ^
+  src\bottleneck_core.cpp src\geometric_backend.cpp benchmarks\bottleneck_mandatory_bench.cpp %BOTTLENECK_BUILD_DIR%\distance_avx2.obj ^
+  /Fe:%BOTTLENECK_BUILD_DIR%\bottleneck_mandatory_bench.exe %BOTTLENECK_LINK_OPT%
+if errorlevel 1 exit /b %errorlevel%
+
+cl.exe /nologo /std:c++20 %BOTTLENECK_COMPILE_OPT% /EHsc /W4 /permissive- /Zc:__cplusplus /DBOTTLENECK_HAVE_AVX2_KERNEL=1 /Iinclude ^
+  src\bottleneck_core.cpp src\geometric_backend.cpp benchmarks\bottleneck_component_bench.cpp %BOTTLENECK_BUILD_DIR%\distance_avx2.obj ^
+  /Fe:%BOTTLENECK_BUILD_DIR%\bottleneck_component_bench.exe %BOTTLENECK_LINK_OPT%
+if errorlevel 1 exit /b %errorlevel%
+
+cl.exe /nologo /std:c++20 %BOTTLENECK_COMPILE_OPT% /EHsc /W4 /permissive- /Zc:__cplusplus /DBOTTLENECK_HAVE_AVX2_KERNEL=1 /Iinclude ^
+  src\bottleneck_core.cpp src\geometric_backend.cpp benchmarks\bottleneck_geometry_bench.cpp %BOTTLENECK_BUILD_DIR%\distance_avx2.obj ^
+  /Fe:%BOTTLENECK_BUILD_DIR%\bottleneck_geometry_bench.exe %BOTTLENECK_LINK_OPT%
+if errorlevel 1 exit /b %errorlevel%
+
+cl.exe /nologo /std:c++20 %BOTTLENECK_COMPILE_OPT% /EHsc /W4 /permissive- /Zc:__cplusplus /DBOTTLENECK_HAVE_AVX2_KERNEL=1 /Iinclude ^
+  src\bottleneck_core.cpp src\geometric_backend.cpp benchmarks\bottleneck_search_bench.cpp %BOTTLENECK_BUILD_DIR%\distance_avx2.obj ^
+  /Fe:%BOTTLENECK_BUILD_DIR%\bottleneck_search_bench.exe %BOTTLENECK_LINK_OPT%
+if errorlevel 1 exit /b %errorlevel%
+
+cl.exe /nologo /std:c++20 %BOTTLENECK_COMPILE_OPT% /EHsc /W4 /permissive- /Zc:__cplusplus /DBOTTLENECK_HAVE_AVX2_KERNEL=1 /Iinclude ^
+  src\bottleneck_core.cpp src\geometric_backend.cpp benchmarks\bottleneck_router_bench.cpp %BOTTLENECK_BUILD_DIR%\distance_avx2.obj ^
+  /Fe:%BOTTLENECK_BUILD_DIR%\bottleneck_router_bench.exe %BOTTLENECK_LINK_OPT%
+if errorlevel 1 exit /b %errorlevel%
+
 :build_wasserstein
+cl.exe /nologo /std:c++20 %BOTTLENECK_COMPILE_OPT% /EHsc /W4 /permissive- /Zc:__cplusplus /DBOTTLENECK_HAVE_AVX2_KERNEL=1 /DBOTTLENECK_HAVE_WASSERSTEIN_AVX2=1 /Iinclude ^
+  src\bottleneck_core.cpp src\geometric_backend.cpp src\wasserstein.cpp benchmarks\bottleneck_wasserstein_assist_bench.cpp %BOTTLENECK_BUILD_DIR%\distance_avx2.obj %BOTTLENECK_BUILD_DIR%\wasserstein_avx2.obj ^
+  /Fe:%BOTTLENECK_BUILD_DIR%\bottleneck_wasserstein_assist_bench.exe %BOTTLENECK_LINK_OPT%
+if errorlevel 1 exit /b %errorlevel%
+
 cl.exe /nologo /std:c++20 %BOTTLENECK_COMPILE_OPT% /EHsc /W4 /permissive- /Zc:__cplusplus /DBOTTLENECK_HAVE_AVX2_KERNEL=1 /DBOTTLENECK_HAVE_WASSERSTEIN_AVX2=1 /Iinclude ^
   src\bottleneck_core.cpp src\geometric_backend.cpp src\wasserstein.cpp tests\wasserstein_core_tests.cpp %BOTTLENECK_BUILD_DIR%\distance_avx2.obj %BOTTLENECK_BUILD_DIR%\wasserstein_avx2.obj ^
   /Fe:%BOTTLENECK_BUILD_DIR%\wasserstein_core_tests.exe %BOTTLENECK_LINK_OPT%

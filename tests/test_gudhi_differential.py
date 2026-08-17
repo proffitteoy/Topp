@@ -75,11 +75,17 @@ def main() -> int:
         (2, 7, 3, 9, 9, 1),
     ]
     multiplicity_config = (2, 5, 3, 0, 11, 0)
+    mandatory_configs = [
+        (4, 0, 0, 0, 0, 0),
+        (2, 5, 3, 0, 12, 0),
+        (4, 5, 3, 0, 12, 0),
+    ]
     configs = (
-        geometric_configs
+        geometric_configs + mandatory_configs
         if geometric_only
         else list(itertools.product(range(4), range(6), range(5), range(10), range(10), range(2)))
         + geometric_configs
+        + mandatory_configs
     )
     infinity = float("inf")
     cases = [

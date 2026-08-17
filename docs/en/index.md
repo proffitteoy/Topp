@@ -87,15 +87,15 @@ Continue with the [five-minute quickstart](getting-started/quickstart.md), or se
 
 Median time in milliseconds for one query diagram against 64 target diagrams. For each size, all timing rounds from five synthetic input families (uniform, near-diagonal, clustered, duplicate-heavy, and separated) are pooled before taking the median; lower is faster.
 
-| Distance | Points per diagram | Topp | GUDHI | giotto-tda | Topp vs GUDHI | Topp vs giotto-tda |
+| Distance | Points per diagram | Topp | GUDHI | Hera | Topp vs GUDHI | Topp vs Hera |
 |---|---:|---:|---:|---:|---:|---:|
-| Bottleneck | 8 | **1.059** | 10.729 | 14.434 | **10.13×** | **13.62×** |
-| Bottleneck | 32 | **4.547** | 43.860 | 90.804 | **9.65×** | **19.97×** |
-| Bottleneck | 128 | **16.632** | 235.851 | 558.250 | **14.18×** | **33.56×** |
-| Bottleneck | 512 | **236.045** | 1,882.070 | 3,639.137 | **7.97×** | **15.42×** |
-| Wasserstein | 8 | **1.104** | 15.344 | 11.758 | **13.90×** | **10.65×** |
-| Wasserstein | 32 | **3.246** | 21.727 | 114.656 | **6.69×** | **35.33×** |
-| Wasserstein | 128 | **10.101** | 106.639 | 1,000.598 | **10.56×** | **99.06×** |
-| Wasserstein | 512 | **12.689** | 2,986.669 | 8,808.310 | **235.37×** | **694.17×** |
+| Bottleneck | 8 | **1.109** | 11.435 | 17.558 | **10.31×** | **15.83×** |
+| Bottleneck | 32 | **4.458** | 49.380 | 132.501 | **11.08×** | **29.72×** |
+| Bottleneck | 128 | **11.553** | 265.807 | 765.597 | **23.01×** | **66.27×** |
+| Bottleneck | 512 | **53.879** | 1,913.019 | 5,077.575 | **35.51×** | **94.24×** |
+| Wasserstein | 8 | **1.161** | 16.813 | 6.976 | **14.48×** | **6.01×** |
+| Wasserstein | 32 | **3.154** | 22.152 | 66.302 | **7.02×** | **21.02×** |
+| Wasserstein | 128 | **11.987** | 112.666 | 537.364 | **9.40×** | **44.83×** |
+| Wasserstein | 512 | **16.400** | 3,112.252 | 4,159.430 | **189.77×** | **253.62×** |
 
-Measured on 2026-08-17 on Windows 11 with Python 3.12.13 and one thread, using the current-mainline Topp 0.1.0 MSVC wheel (SHA-256 `dffa357a504121538d63e3fea3675054430f67e04f91c35828f29a18d150f641`), GUDHI 3.13.0, and giotto-tda 0.6.2. Bottleneck uses each library's default call (Topp is exact; GUDHI `e=None` and giotto-tda are approximate). For Wasserstein, Topp and GUDHI compute exact $W_{1,\infty}$, while giotto-tda defaults to approximate $W_2$; that column therefore describes default Python API speed, not an algorithm ranking for the same mathematical task. Runtime varies substantially by input family, so the pooled result does not imply the same speedup for every distribution.
+Measured on 2026-08-17 on Windows 11 with Python 3.12.13 and one thread, using a Topp 0.1.0 MSVC wheel built from the current worktree (SHA-256 `562161cdc20dda8ab751f611102dda71e5d9d5585c1feed30e0110db1934939c`), GUDHI 3.13.0, and the Hera API bundled with that release. Bottleneck uses each library's default call: Topp is exact, GUDHI `e=None` uses its approximate strategy, and Hera uses approximate `delta=0.01`. For Wasserstein, Topp and GUDHI compute exact $W_{1,\infty}$, while Hera computes approximate $W_{1,\infty}$ (`delta=0.01`); the Hera column therefore describes default Python API speed, not an algorithm ranking at equal precision. Runtime varies substantially by input family, so the pooled result does not imply the same speedup for every distribution.

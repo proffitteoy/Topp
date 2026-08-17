@@ -907,6 +907,9 @@ bool perfect_matching_component_kuhn(const ThresholdGraph& threshold_graph, Vert
     }
     if (stats != nullptr) {
       ++stats->component_count;
+      stats->largest_component_vertices =
+          (std::max)(stats->largest_component_vertices,
+                     static_cast<std::uint64_t>(left_count + right_count));
     }
     if (left_count != right_count) {
       if (stats != nullptr) {
@@ -1178,26 +1181,26 @@ bool mandatory_sparse_flow_within(const DistanceTable& table, double threshold,
     demand[static_cast<std::size_t>(to)] += lower;
   };
 
-  std::size_t mandatory_count = 0;
+  std::size_t first_mandatory_count = 0;
   for (std::size_t left = 0; left < n; ++left) {
     first_mandatory[left] = static_cast<std::uint8_t>(
         table.first_diagonal[left] > threshold);
-    mandatory_count += first_mandatory[left];
+    first_mandatory_count += first_mandatory[left];
     add_bounded_edge(source, static_cast<int>(left), first_mandatory[left], 1);
   }
+  std::size_t second_mandatory_count = 0;
   for (std::size_t right = 0; right < m; ++right) {
     second_mandatory[right] = static_cast<std::uint8_t>(
         table.second_diagonal[right] > threshold);
-    mandatory_count += second_mandatory[right];
+    second_mandatory_count += second_mandatory[right];
     add_bounded_edge(static_cast<int>(n + right), sink, second_mandatory[right], 1);
   }
+  const std::size_t mandatory_count = first_mandatory_count + second_mandatory_count;
   if (stats != nullptr) {
     stats->mandatory_vertices += mandatory_count;
     stats->optional_pairs_pruned +=
-        (n - static_cast<std::size_t>(std::count(first_mandatory.begin(),
-                                                first_mandatory.end(), std::uint8_t{1}))) *
-        (m - static_cast<std::size_t>(std::count(second_mandatory.begin(),
-                                                second_mandatory.end(), std::uint8_t{1})));
+        static_cast<std::uint64_t>(n - first_mandatory_count) *
+        static_cast<std::uint64_t>(m - second_mandatory_count);
   }
   if (mandatory_count == 0) {
     return true;
@@ -1350,9 +1353,29 @@ bool finite_within(const DistanceTable& table, double threshold, const SolverCon
   MatcherStrategy matcher = config.matcher;
   if (matcher == MatcherStrategy::adaptive) {
     const bool large = table.side_size() >= 384;
-    matcher = large && sampled_cross_density(table, threshold, stats) <= 0.03
-                  ? MatcherStrategy::mandatory_flow
-                  : MatcherStrategy::reusable_greedy_kuhn;
+    if (large) {
+      std::size_t optional_first = 0;
+      std::size_t optional_second = 0;
+      for (double diagonal : table.first_diagonal) {
+        optional_first += static_cast<std::size_t>(diagonal <= threshold);
+      }
+      for (double diagonal : table.second_diagonal) {
+        optional_second += static_cast<std::size_t>(diagonal <= threshold);
+      }
+      const double optional_pair_fraction =
+          table.first.empty() || table.second.empty()
+              ? 1.0
+              : (static_cast<double>(optional_first) *
+                 static_cast<double>(optional_second)) /
+                    (static_cast<double>(table.first.size()) *
+                     static_cast<double>(table.second.size()));
+      const double sampled_density = sampled_cross_density(table, threshold, stats);
+      matcher = sampled_density <= 0.03 || optional_pair_fraction >= 0.75
+                    ? MatcherStrategy::mandatory_sparse_flow
+                    : MatcherStrategy::reusable_greedy_kuhn;
+    } else {
+      matcher = MatcherStrategy::reusable_greedy_kuhn;
+    }
   }
   if (matcher == MatcherStrategy::mandatory_flow) {
     return mandatory_flow_within(table, threshold, stats);
@@ -1624,6 +1647,9 @@ double finite_distance_incremental(const DistanceTable& table, const SolverConfi
   std::size_t matching_size = 0;
 
   const auto add_groups = [&](std::size_t first_group, std::size_t end_group) {
+    if (stats != nullptr) {
+      stats->incremental_groups_added += end_group - first_group;
+    }
     for (std::size_t index = group_starts[first_group]; index < group_starts[end_group]; ++index) {
       adjacency[static_cast<std::size_t>(edges[index].left)].push_back(edges[index].right);
     }
@@ -1691,6 +1717,10 @@ double finite_distance_incremental(const DistanceTable& table, const SolverConfi
       continue;
     }
 
+    if (stats != nullptr) {
+      ++stats->incremental_rollbacks;
+    }
+
     for (std::size_t left = 0; left < side_size; ++left) {
       adjacency[left].resize(row_sizes[left]);
     }
@@ -1713,16 +1743,26 @@ std::uint64_t x_window_pair_count(const PreparedDiagram& first,
   if (first.finite_points().size() > second.finite_points().size()) {
     return x_window_pair_count(second, first, upper);
   }
+  const auto& first_births = first.sorted_finite_births();
+  const auto& second_births = second.sorted_finite_births();
   std::uint64_t x_window_pairs = 0;
-  for (double birth : first.finite_births()) {
+  std::size_t lower_index = 0;
+  std::size_t upper_index = 0;
+  for (double birth : first_births) {
     const double lower = std::nextafter(birth - upper,
                                         -std::numeric_limits<double>::infinity());
     const double higher = std::nextafter(birth + upper,
                                          std::numeric_limits<double>::infinity());
-    const auto begin = std::lower_bound(second.sorted_finite_births().begin(),
-                                        second.sorted_finite_births().end(), lower);
-    const auto end = std::upper_bound(begin, second.sorted_finite_births().end(), higher);
-    x_window_pairs += static_cast<std::uint64_t>(end - begin);
+    while (lower_index < second_births.size() &&
+           second_births[lower_index] < lower) {
+      ++lower_index;
+    }
+    upper_index = (std::max)(upper_index, lower_index);
+    while (upper_index < second_births.size() &&
+           second_births[upper_index] <= higher) {
+      ++upper_index;
+    }
+    x_window_pairs += static_cast<std::uint64_t>(upper_index - lower_index);
   }
   return x_window_pairs;
 }
@@ -1738,6 +1778,39 @@ bool prefer_geometric_refinement(const PreparedDiagram& first,
   const double fraction = static_cast<double>(x_window_pairs) /
                           (static_cast<double>(n) * static_cast<double>(m));
   return fraction >= 0.01;
+}
+
+bool prefer_mandatory_sparse_flow(const PreparedDiagram& first,
+                                  const PreparedDiagram& second,
+                                  double diagonal_upper) {
+  const std::size_t total = first.finite_points().size() + second.finite_points().size();
+  if (total < 256 || diagonal_upper <= 0.0) {
+    return false;
+  }
+  const double small_diagonal_cutoff = diagonal_upper * 0.05;
+  std::size_t small_diagonal_count = 0;
+  for (double diagonal : first.finite_diagonal_distances()) {
+    small_diagonal_count += static_cast<std::size_t>(diagonal <= small_diagonal_cutoff);
+  }
+  for (double diagonal : second.finite_diagonal_distances()) {
+    small_diagonal_count += static_cast<std::size_t>(diagonal <= small_diagonal_cutoff);
+  }
+  if (small_diagonal_count * 2 >= total) {
+    return true;
+  }
+
+  double minimum_birth = std::numeric_limits<double>::infinity();
+  double maximum_birth = -std::numeric_limits<double>::infinity();
+  if (!first.sorted_finite_births().empty()) {
+    minimum_birth = (std::min)(minimum_birth, first.sorted_finite_births().front());
+    maximum_birth = (std::max)(maximum_birth, first.sorted_finite_births().back());
+  }
+  if (!second.sorted_finite_births().empty()) {
+    minimum_birth = (std::min)(minimum_birth, second.sorted_finite_births().front());
+    maximum_birth = (std::max)(maximum_birth, second.sorted_finite_births().back());
+  }
+  const double birth_span = maximum_birth - minimum_birth;
+  return birth_span > 0.0 && diagonal_upper <= birth_span * 0.02;
 }
 
 bool prefer_multiplicity_flow(const PreparedDiagram& first,
@@ -1775,12 +1848,18 @@ double finite_distance(const PreparedDiagram& first, const PreparedDiagram& seco
                         const SolverConfig& config, SolverStats* stats) {
   if (prefer_multiplicity_flow(first, second) &&
       identical_finite_multiset(first, second)) {
+    if (stats != nullptr) {
+      ++stats->router_identity_shortcuts;
+    }
     return 0.0;
   }
   ThresholdStrategy threshold = config.threshold;
   if (threshold == ThresholdStrategy::adaptive) {
     if (config.matcher == MatcherStrategy::adaptive &&
         prefer_multiplicity_flow(first, second)) {
+      if (stats != nullptr) {
+        ++stats->router_multiplicity_routes;
+      }
       SolverConfig multiplicity = config;
       multiplicity.threshold = ThresholdStrategy::quickselect;
       multiplicity.distance = DistanceStrategy::recompute_soa;
@@ -1795,14 +1874,41 @@ double finite_distance(const PreparedDiagram& first, const PreparedDiagram& seco
                      second.max_finite_diagonal_distance());
       const std::uint64_t x_window_pairs =
           x_window_pair_count(first, second, diagonal_upper);
+      if (stats != nullptr) {
+        stats->router_x_window_pairs += x_window_pairs;
+      }
       if (x_window_pairs == 0) {
+        if (stats != nullptr) {
+          ++stats->router_no_cross_shortcuts;
+        }
         return diagonal_upper;
+      }
+      if (config.matcher == MatcherStrategy::adaptive &&
+          prefer_mandatory_sparse_flow(first, second, diagonal_upper)) {
+        if (stats != nullptr) {
+          ++stats->router_mandatory_routes;
+        }
+        SolverConfig mandatory = config;
+        mandatory.candidates = CandidateStrategy::x_sweep_clipped;
+        mandatory.threshold = ThresholdStrategy::quickselect;
+        mandatory.distance = DistanceStrategy::recompute_soa;
+        mandatory.adjacency = AdjacencyStrategy::on_demand;
+        mandatory.matcher = MatcherStrategy::mandatory_sparse_flow;
+        mandatory.vertex_order = VertexOrder::natural;
+        return finite_distance(first, second, mandatory, stats);
       }
       threshold = prefer_geometric_refinement(first, second, x_window_pairs)
                       ? ThresholdStrategy::geometric_refinement
                       : ThresholdStrategy::quickselect;
     } else {
       threshold = ThresholdStrategy::quickselect;
+    }
+    if (stats != nullptr) {
+      if (threshold == ThresholdStrategy::geometric_refinement) {
+        ++stats->router_refinement_routes;
+      } else {
+        ++stats->router_quickselect_routes;
+      }
     }
   }
   if (threshold == ThresholdStrategy::geometric_refinement) {
@@ -1834,6 +1940,24 @@ double finite_distance(const PreparedDiagram& first, const PreparedDiagram& seco
   auto radii = candidates(table, config.candidates, !quickselect,
                           multiplicity_compressed, stats);
 
+  double lower_bound =
+      std::fabs(table.first_max_diagonal - table.second_max_diagonal);
+  if (std::isfinite(config.lower_bound_hint) &&
+      config.lower_bound_hint > lower_bound) {
+    if (stats != nullptr) {
+      ++stats->lower_bound_hints_tested;
+      ++stats->threshold_decisions;
+    }
+    const double probe = std::nextafter(config.lower_bound_hint,
+                                        -std::numeric_limits<double>::infinity());
+    if (!finite_within(table, probe, config, stats)) {
+      lower_bound = config.lower_bound_hint;
+      if (stats != nullptr) {
+        ++stats->lower_bound_hints_accepted;
+      }
+    }
+  }
+
   const auto decision = [&](std::size_t index) {
     if (stats != nullptr) {
       ++stats->threshold_decisions;
@@ -1843,8 +1967,6 @@ double finite_distance(const PreparedDiagram& first, const PreparedDiagram& seco
                : finite_within(table, radii[index], config, stats);
   };
 
-  const double lower_bound =
-      std::fabs(table.first_max_diagonal - table.second_max_diagonal);
   if (quickselect) {
     radii.erase(std::remove_if(radii.begin(), radii.end(),
                                [&](double value) { return value < lower_bound; }),
@@ -2128,6 +2250,7 @@ bool bottleneck_within(const PreparedDiagram& first, const PreparedDiagram& seco
     return detail::geometric_bottleneck_within(first, second, threshold, stats);
   }
   const bool use_x_sweep = config.adjacency == AdjacencyStrategy::x_sweep_csr ||
+                           config.matcher == MatcherStrategy::mandatory_sparse_flow ||
                            (config.adjacency == AdjacencyStrategy::adaptive &&
                             first.finite_points().size() + second.finite_points().size() >= 128);
   if (use_x_sweep &&

@@ -35,7 +35,7 @@ Topp 面向**已经拥有 persistence diagrams，需要在 Python 中做严格�
 - 会用一个查询图反复比较许多候选图，希望复用预处理结果、workspace 或输出数组；
 - 希望运行时只引入 NumPy，并使用带类型信息的 Python API。
 
-Topp **不负责生成 persistence diagrams**，也不提供任意 `(order, internal_p)`、近似/GPU 距离或完整 TDA 工作流。需要这些能力时，应继续使用覆盖面更广的 TDA 库。公开文档提供了 [Topp、GUDHI 与 giotto-tda 的 Python 批量距离速度表](https://proffitteoy.github.io/Topp/#python-批量距离性能)；结果仅代表表中固定环境和调用方式。
+Topp **不负责生成 persistence diagrams**，也不提供任意 `(order, internal_p)`、近似/GPU 距离或完整 TDA 工作流。需要这些能力时，应继续使用覆盖面更广的 TDA 库。公开文档提供了 [Topp、GUDHI 与 Hera 的 Python 批量距离速度表](https://proffitteoy.github.io/Topp/#python-批量距离性能)；结果仅代表表中固定环境和调用方式。
 
 ## 提供的能力
 
