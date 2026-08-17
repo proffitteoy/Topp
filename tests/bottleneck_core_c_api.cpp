@@ -26,6 +26,7 @@ bottleneck::SolverConfig make_config(int candidates, int threshold, int distance
       candidates == 0 ? bottleneck::CandidateStrategy::sort_all
                       : candidates == 1 ? bottleneck::CandidateStrategy::sort_unique
                       : candidates == 2 ? bottleneck::CandidateStrategy::sort_unique_clipped
+                      : candidates == 4 ? bottleneck::CandidateStrategy::x_sweep_clipped
                                         : bottleneck::CandidateStrategy::sort_unique_greedy_clipped,
       threshold == 0 ? bottleneck::ThresholdStrategy::binary
                      : threshold == 1 ? bottleneck::ThresholdStrategy::gudhi_alpha
@@ -61,6 +62,7 @@ bottleneck::SolverConfig make_config(int candidates, int threshold, int distance
                    : matcher == 8 ? bottleneck::MatcherStrategy::fixed_greedy_kuhn
                    : matcher == 10 ? bottleneck::MatcherStrategy::geometric_hopcroft_karp
                    : matcher == 11 ? bottleneck::MatcherStrategy::multiplicity_flow
+                   : matcher == 12 ? bottleneck::MatcherStrategy::mandatory_sparse_flow
                                   : bottleneck::MatcherStrategy::adaptive,
       order == 0 ? bottleneck::VertexOrder::natural : bottleneck::VertexOrder::degree_ascending,
   };

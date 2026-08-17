@@ -212,6 +212,27 @@ void deterministic_cases() {
   if (warm_stats.warm_start_certificates == 0) {
     fail("greedy warm start failed to certify an independently optimal matching");
   }
+
+  const WassersteinConfig arena_sparse{
+      WassersteinMetric::w1_linf,
+      WassersteinCandidateStrategy::dense_scalar,
+      WassersteinGraphStrategy::csr,
+      WassersteinMatcherStrategy::sparse_sap_arena,
+      WassersteinComponentStrategy::none,
+      WassersteinWarmStart::none,
+  };
+  bottleneck::WassersteinStats arena_stats;
+  expect_near(bottleneck::wasserstein_distance(disconnected_first,
+                                                disconnected_second,
+                                                arena_sparse, &arena_stats),
+              bottleneck::wasserstein_distance(disconnected_first,
+                                                disconnected_second, w1_dense),
+              "contiguous-arena sparse SAP");
+  if (arena_stats.sparse_arena_builds != 1 ||
+      arena_stats.sparse_scratch_reuses == 0 ||
+      arena_stats.peak_sparse_arena_bytes == 0) {
+    fail("contiguous-arena sparse SAP did not expose allocation statistics");
+  }
 }
 
 Diagram random_diagram(std::mt19937_64& generator, std::size_t size) {
@@ -267,6 +288,10 @@ std::vector<WassersteinConfig> experiment_configs(WassersteinMetric metric) {
       {metric, WassersteinCandidateStrategy::sweep_binary,
        WassersteinGraphStrategy::csr,
        WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none},
+      {metric, WassersteinCandidateStrategy::sweep_binary,
+       WassersteinGraphStrategy::csr,
+       WassersteinMatcherStrategy::sparse_sap_arena,
        WassersteinComponentStrategy::none, WassersteinWarmStart::none},
       {metric, WassersteinCandidateStrategy::sweep_binary,
        WassersteinGraphStrategy::fixed_degree_4,
@@ -347,6 +372,26 @@ std::vector<WassersteinConfig> experiment_configs(WassersteinMetric metric) {
        WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
        WassersteinComponentStrategy::none, WassersteinWarmStart::none,
        WassersteinDuplicateStrategy::none, 32},
+      {metric, WassersteinCandidateStrategy::topk_pricing_simd,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 2},
+      {metric, WassersteinCandidateStrategy::topk_pricing_simd,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 4},
+      {metric, WassersteinCandidateStrategy::topk_pricing_simd,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 8},
+      {metric, WassersteinCandidateStrategy::topk_pricing_simd,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 16},
+      {metric, WassersteinCandidateStrategy::topk_pricing_simd,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 32},
       {metric, WassersteinCandidateStrategy::topk_pricing_sweep,
        WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
        WassersteinComponentStrategy::none, WassersteinWarmStart::none,
@@ -387,6 +432,46 @@ std::vector<WassersteinConfig> experiment_configs(WassersteinMetric metric) {
        WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
        WassersteinComponentStrategy::none, WassersteinWarmStart::none,
        WassersteinDuplicateStrategy::none, 32},
+      {metric, WassersteinCandidateStrategy::topk_pricing_kdtree_persistent,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 2},
+      {metric, WassersteinCandidateStrategy::topk_pricing_kdtree_persistent,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 4},
+      {metric, WassersteinCandidateStrategy::topk_pricing_kdtree_persistent,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 8},
+      {metric, WassersteinCandidateStrategy::topk_pricing_kdtree_persistent,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 16},
+      {metric, WassersteinCandidateStrategy::topk_pricing_kdtree_persistent,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 32},
+      {metric, WassersteinCandidateStrategy::topk_pricing_adaptive,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 2},
+      {metric, WassersteinCandidateStrategy::topk_pricing_adaptive,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 4},
+      {metric, WassersteinCandidateStrategy::topk_pricing_adaptive,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 8},
+      {metric, WassersteinCandidateStrategy::topk_pricing_adaptive,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 16},
+      {metric, WassersteinCandidateStrategy::topk_pricing_adaptive,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 32},
       {metric, WassersteinCandidateStrategy::topk_pricing_sweep_incremental,
        WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
        WassersteinComponentStrategy::none, WassersteinWarmStart::none,
@@ -424,6 +509,51 @@ std::vector<WassersteinConfig> experiment_configs(WassersteinMetric metric) {
        WassersteinComponentStrategy::none, WassersteinWarmStart::none,
        WassersteinDuplicateStrategy::none, 16},
       {metric, WassersteinCandidateStrategy::topk_pricing_sweep_persistent,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 32},
+      {metric, WassersteinCandidateStrategy::topk_pricing_sweep_dynamic,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 2},
+      {metric, WassersteinCandidateStrategy::topk_pricing_sweep_dynamic,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 4},
+      {metric, WassersteinCandidateStrategy::topk_pricing_sweep_dynamic,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 8},
+      {metric, WassersteinCandidateStrategy::topk_pricing_sweep_dynamic,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 16},
+      {metric, WassersteinCandidateStrategy::topk_pricing_sweep_dynamic,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 32},
+      {metric,
+       WassersteinCandidateStrategy::topk_pricing_sweep_dynamic_batched,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 2},
+      {metric,
+       WassersteinCandidateStrategy::topk_pricing_sweep_dynamic_batched,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 4},
+      {metric,
+       WassersteinCandidateStrategy::topk_pricing_sweep_dynamic_batched,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 8},
+      {metric,
+       WassersteinCandidateStrategy::topk_pricing_sweep_dynamic_batched,
+       WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
+       WassersteinComponentStrategy::none, WassersteinWarmStart::none,
+       WassersteinDuplicateStrategy::none, 16},
+      {metric,
+       WassersteinCandidateStrategy::topk_pricing_sweep_dynamic_batched,
        WassersteinGraphStrategy::csr, WassersteinMatcherStrategy::sparse_sap,
        WassersteinComponentStrategy::none, WassersteinWarmStart::none,
        WassersteinDuplicateStrategy::none, 32},
@@ -505,13 +635,23 @@ void variant_differential() {
             (config.candidates ==
                  WassersteinCandidateStrategy::topk_pricing_full_scan ||
              config.candidates ==
+                 WassersteinCandidateStrategy::topk_pricing_simd ||
+             config.candidates ==
                  WassersteinCandidateStrategy::topk_pricing_sweep ||
              config.candidates ==
                  WassersteinCandidateStrategy::topk_pricing_kdtree ||
              config.candidates == WassersteinCandidateStrategy::
+                                      topk_pricing_kdtree_persistent ||
+             config.candidates ==
+                 WassersteinCandidateStrategy::topk_pricing_adaptive ||
+             config.candidates == WassersteinCandidateStrategy::
                                       topk_pricing_sweep_incremental ||
              config.candidates == WassersteinCandidateStrategy::
-                                      topk_pricing_sweep_persistent)) {
+                                      topk_pricing_sweep_persistent ||
+             config.candidates == WassersteinCandidateStrategy::
+                                      topk_pricing_sweep_dynamic ||
+             config.candidates == WassersteinCandidateStrategy::
+                                      topk_pricing_sweep_dynamic_batched)) {
           std::cerr << "top-k diagnostic: rounds=" << stats.pricing_rounds
                     << ", priced=" << stats.priced_edges
                     << ", violations=" << stats.pricing_violations

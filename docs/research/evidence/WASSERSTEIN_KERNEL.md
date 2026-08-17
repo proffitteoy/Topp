@@ -1,12 +1,12 @@
 # Wasserstein 内核实验记录
 
-记录日期：2026-08-11
+记录日期：2026-08-11，续更至 2026-08-17
 
 ## 范围
 
 本轮按 `../proposals/wasserstein第二阶段.md` 的方法重做 Wasserstein 优化：每个 candidate、graph representation、matcher 和 component 分支独立配置、独立差分、随机顺序 benchmark，再组合默认 adaptive kernel。
 
-当前仍然只处理 C++ exact 内核，不处理 Python 外壳、绑定、wheel 或 approximate auction。已覆盖 `W1-L∞` 和 `W2-L2`。
+优化实验本身只处理 C++ exact 内核，不处理 Python 外壳、绑定或 approximate auction。主线冻结后额外用当前源码构建 MSVC wheel，并按仓库既有 Python 跨库流程复跑公开速度表。已覆盖 `W1-L∞` 和 `W2-L2`。
 
 ## 已实现实验矩阵
 
@@ -19,10 +19,15 @@
 - `sweep_binary`：按 `u` 排序并对每行做 binary-search window；
 - `sweep_two_pointer`：W1 merged-event active sweep；W2 回退 binary window；
 - `topk_pricing_full_scan`：每行仅物化 top-k positive saving，restricted solve 后以全对扫描做 exact pricing；
+- `topk_pricing_simd`：full-scan pricing 的 W1/W2 saving 用 AVX2 一次计算 4 列，终止前再做 scalar full-scan certificate；无 AVX2 时回退 scalar；
 - `topk_pricing_sweep`：相同 active-set 流程，但 seed/pricing 只枚举 rotated geometric window；
 - `topk_pricing_kdtree`：按 rotated `u` 建 exact branch-and-bound tree，节点缓存 `u` 区间、最大 `v` 和最小列 dual；
+- `topk_pricing_kdtree_persistent`：一次 distance 调用内持久复用 KD-tree 静态几何节点与 DFS scratch，每轮只更新 `min β`；
+- `topk_pricing_adaptive`：显式 E4 oracle router，根据 window density、规模和上一轮 violation hit rate选择 scalar full scan、sweep 或 KD-tree；
 - `topk_pricing_sweep_incremental`：保留上一轮 matching，以重建 residual network 后的 exact negative-cycle cancellation 做 D4 matching-incremental 对照；
 - `topk_pricing_sweep_persistent`：跨 pricing round 持久复用 residual network、matching 和 Bellman–Ford scratch，只向网络追加新候选边；
+- `topk_pricing_sweep_dynamic`：由 restricted matching 的 LP dual 构造可行 residual 势，新边出现负 reduced cost 时只做一次 column→row reduced-cost Dijkstra，并沿新边与最短路形成的负环增广；
+- `topk_pricing_sweep_dynamic_batched`：按目标 column 分组新 violated edge；同组共享 column→all rows Dijkstra，无负环时一次 capped potential 更新同时使整组边可行；
 - `adaptive`：小图 scalar；高 window density 的至少 262144 个候选对使用 parallel，较小 dense 输入用 AVX2/blocked；其余用 binary sweep。
 
 ### Weighted graph
@@ -42,6 +47,7 @@
 - `dense_sap_row_reduction`：独立 exact 实验；先做 row dual reduction，并把无冲突的 row-minimum 零 reduced-cost 边作为初始 partial matching，再只增广冲突行；
 - `dense_sap_jv_reduction`：column reduction、reduction transfer 和两轮 augmenting-row reduction 的直接矩形迁移；返回前以 matching LP dual certificate 验证，失败则回退 clean SAP；
 - `sparse_sap`：CSR/row-list residual graph 上的 exact primal-dual Dijkstra；
+- `sparse_sap_arena`：相同 primal-dual Dijkstra 的显式工程实验；residual topology 使用单块连续 edge arena，并跨 augmentation 复用 distance/predecessor/heap scratch；
 - `priced restricted SAP`：`k=2/4/8/16/32`，component-aware restricted solve，返回可验证的 matching LP dual；
 - `component + dense`；
 - `component + sparse`；
@@ -71,7 +77,7 @@ Wq,p(X,Y)^q = D - max_M Σ sij
 
 - 手工 empty、identity、shift、diagonal、zero-saving boundary、essential 和 disconnected component；
 - 每个 metric 150 组 `n,m<=5` exhaustive partial-matching oracle；
-- 每个 metric 500 组随机 diagram，52 条实验配置逐项差分；
+- 每个 metric 500 组随机 diagram，78 条实验配置逐项差分；
 - duplicate、equal cost/tie、near-diagonal、extreme coordinates、`n≠m`、finite+essential 混合；
 - candidate/graph/matcher/component/adaptive 交换 diagram 后的对称性；
 - GCC 和 MSVC/AVX2 两套构建。
@@ -94,7 +100,7 @@ build\manual\wasserstein_core_bench.exe `
   --pattern near_diagonal
 ```
 
-每轮随机打乱 56 个配置的执行顺序，报告 median/p95，并拆分：
+每轮随机打乱 76 个配置的执行顺序，报告 median/p95，并拆分：
 
 ```text
 T_prepare + T_candidate + T_graph + T_component + T_solver + T_pricing
@@ -292,6 +298,59 @@ MSVC 同进程随机轮序摘要：
 
 residual 容器与 scratch 的持久复用没有产生可测收益，差异都在约 ±9% 的轮间范围内；小 `k` 的灾难性退化完全保留。热点因此被进一步定位为每轮全 residual graph 的 Bellman–Ford negative-cycle detection，而不是 network allocation、matching materialization 或 scratch 初始化。结论：persistent exact baseline 完成并保留为显式负面对照，不进入 adaptive；继续优化这条路线必须更换增量最短路/负环算法，而不是继续做容器复用。
 
+### D4 dynamic reduced-cost Dijkstra
+
+`topk_pricing_sweep_dynamic` 用 restricted optimum 的 matching LP dual 初始化 residual 可行势：source/sink 为 0、row 为 `α`、column 为 `-β`。每条新 violated edge `row→column` 插入后，若 reduced cost 已非负则无需修复；否则从 column 到 row 在旧 residual 上运行 non-negative reduced-cost Dijkstra。若“新边 reduced cost + 最短路”仍为负，就沿新边和 predecessor path 增广一个单位，否则只更新势函数。
+
+势函数更新不是简单地给所有 reachable node 加完整距离，而是给每个节点加 `min(distance, distance[row])`，unreachable node 同样加 `distance[row]`。这个封顶更新同时保持跨 reached/unreached cut 的旧 residual edge 非负，并让目标最短路保持 tight。每轮仍从当前 matching 重建并验证 LP dual；Dijkstra 不变量或 certificate 任一失败都会立即 clean solve 并重新初始化，不能以未认证 matching 结束。
+
+57 条配置的 exhaustive/random/rectangular/duplicate/near-identical 差分在 MSVC 19.44 和 MinGW GCC 13.2 下均通过。以下为 MSVC 同进程随机轮序摘要；64/128 使用 3 repetitions × 7 rounds，512 uniform 使用 1 × 5：
+
+| 场景 | metric/k | sweep rebuild | persistent BF | dynamic Dijkstra | dynamic/rebuild | adaptive |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| uniform 64 | W1, `k=8` | 5.145 ms | 5.976 ms | 3.271 ms | 0.64× | 0.403 ms |
+| uniform 64 | W2, `k=8` | 5.577 ms | 16.322 ms | 3.470 ms | 0.62× | 0.272 ms |
+| uniform 128 | W1, `k=8` | 31.870 ms | 259.035 ms | 21.687 ms | 0.68× | 1.613 ms |
+| uniform 128 | W2, `k=8` | 47.929 ms | 1255.857 ms | 63.000 ms | 1.31× | 2.617 ms |
+| uniform 128 | W1, `k=32` | 16.007 ms | 17.497 ms | 16.747 ms | 1.05× | 1.613 ms |
+| uniform 128 | W2, `k=32` | 17.272 ms | 17.506 ms | 19.360 ms | 1.12× | 2.617 ms |
+| uniform 512 | W1, `k=32` | 847.022 ms | — | 359.568 ms | 0.42× | 37.220 ms |
+| uniform 512 | W2, `k=32` | 1478.194 ms | — | 3418.177 ms | 2.31× | 81.285 ms |
+
+dynamic 路径消除了 Bellman–Ford 的灾难性退化，并在低 violation 的 W1 active set 上出现真实规模收益；512 W1 `k=32` 相对 rebuild 快 2.36×。但收益不具备跨 metric 稳定性：512 W2 同一配置有 75850 个 violation，逐边 Dijkstra 反而慢 2.31×。没有 violation 的 near-diagonal 512/1024 上 dynamic 与 rebuild 持平或略慢；adversarial-sparse 512/1024 因只增加 residual 初始化开销而慢约 1.2–1.7×。所有上述配对的 dynamic fallback 均为 0。结论：更高效的 D4 exact 增量最短路实验已完成，但仍远慢于现有 adaptive，保留为显式研究分支，不进入默认 dispatcher。
+
+#### D4 batched dynamic Dijkstra
+
+`topk_pricing_sweep_dynamic_batched` 利用 residual simple cycle 的结构：一条简单 cycle 不可能同时包含两条进入同一 column 的新 `row→column` 边。实现先屏蔽所有尚未处理的负 reduced-cost 新边，再按目标 column 分组。每组从该 column 做一次 non-negative reduced-cost Dijkstra：若某条新边与最短路构成负环，只增广最负的一条并重搜；若整组都不形成负环，则以该组所需最大 shift 做一次 capped potential 更新，使所有组内边同时可行。已处理组随后成为后续 column 搜索的普通非负 residual edge，因此跨 column 的多新边负环仍会被发现。
+
+`dynamic_inserted_edges/dynamic_dijkstra_runs/dynamic_batch_groups` 直接记录结构行为。78 配置的 MSVC 与 GCC 全差分通过；下表为 MSVC 同进程随机轮序，128 使用 3 repetitions × 7 rounds，uniform 512 使用 1 × 5：
+
+| 场景 | metric/k | per-edge dynamic | batched dynamic | batched/per-edge | Dijkstra runs | batch groups |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| uniform 128 | W1, `k=8` | 9.120 ms | 9.640 ms | 1.057× | 1281 → 1197 | 868 |
+| uniform 128 | W2, `k=8` | 28.495 ms | 15.912 ms | 0.559× | 6846 → 3227 | 1876 |
+| uniform 512 | W1, `k=32` | 200.633 ms | 207.395 ms | 1.034× | 265 → 350 | 265 |
+| uniform 512 | W2, `k=32` | 1843.423 ms | 800.949 ms | 0.435× | 10635 → 3620 | 2000 |
+| clustered 128 | W1, `k=32` | 21.002 ms | 20.745 ms | 0.988× | 651 → 679 | 497 |
+| clustered 128 | W2, `k=32` | 452.852 ms | 125.533 ms | 0.277× | 29344 → 4753 | 2436 |
+
+GCC uniform 128 复现相同趋势：W1 batched/per-edge 为 `0.972×`，W2 为 `0.568×`。W2 的 violation 更集中在重复目标 column，搜索次数下降 53%–84%；W1 的 column sharing 较弱，改变负环选择顺序后搜索数甚至可能增加，端到端有约 3%–6% 正负波动。即使 512 W2 已快 2.30×，batched dynamic 的约 801 ms 仍是 adaptive 约 50 ms 的 16 倍；clustered 也没有击败 dense adaptive。结论：逐 violated-edge 搜索的批量化项完成，显式分支保留为 exact 正对照，不进入冻结的 adaptive/default。
+
+### E1 AVX2 full pricing
+
+`topk_pricing_simd` 与 scalar full-scan 使用相同 top-k seed、restricted solve 和 dual，只将每行 W1/W2 saving 以 AVX2 四列一组写入复用 buffer，再做 scalar dual/filter。W1 的 rotated binary64 identity 会改变极近 violation 的排序，所以 SIMD 只能用于加速发现候选，不能独自证明全局无遗漏：每个 terminal SIMD round 都追加一次 scalar full scan，只有后者也无 violation 才允许 exact 结束。非 AVX2/GCC 构建直接走 scalar full scan。
+
+MSVC 3 repetitions × 7 randomized rounds：
+
+| 场景 | metric/k | scalar full | exact-guarded SIMD | sweep | scalar pricing | SIMD pricing | SIMD/scalar total |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| uniform 128 | W1, `k=8` | 20.899 ms | 22.869 ms | 19.630 ms | 0.727 ms | 0.823 ms | 1.09× |
+| uniform 128 | W2, `k=8` | 33.512 ms | 32.596 ms | 37.241 ms | 1.025 ms | 1.086 ms | 0.97× |
+| clustered 128 | W1, `k=32` | 74.170 ms | 164.911 ms | 92.252 ms | 1.671 ms | 4.631 ms | 2.22× |
+| clustered 128 | W2, `k=32` | 176.972 ms | 183.322 ms | 193.471 ms | 5.198 ms | 5.139 ms | 1.04× |
+
+不带 terminal scalar guard 时，uniform 的纯 SIMD scan 局部可快约 20%–26%，但它不足以构成 exact absence certificate。加回必要的 scalar terminal round 后局部收益消失。clustered W1 还因 rotated saving 舍入改变 top-k violation 顺序，累计 active-set round 从 scalar 的 77 增至 147 个 SIMD round 加 42 个 terminal scalar round，端到端退化 2.22×。结论：E1 exact-guarded SIMD pricing 实验完成并保留显式负面对照，不进入 E4 router 或默认 adaptive。
+
 ### E3 KD-tree pricing
 
 `topk_pricing_kdtree` 与 sweep 使用相同 top-k seed 和 restricted solver，只替换 pricing oracle。树按 second diagram 的 rotated `u` 排序；每个节点缓存 `min/max u`、`max v` 与当前 `min β`，由此给出 W1 的 `2 min(v_i,max_v)-min|du|` 或 W2 的 `4 v_i max_v-2 min|du|²` saving 上界。若上界不足以超过 `α_i+min β` 则整棵子树 exact 剪枝；节点摘要的 binary64 舍入使用向外容差，dual 无效时回退 sweep 全枚举。
@@ -306,7 +365,43 @@ MSVC 同进程随机轮序摘要：
 | uniform 512 | W1, `k=32` | 975330 | 1280 | 9.002 ms | 6.511 ms | 588.8 ms | 623.5 ms |
 | uniform 512 | W2, `k=32` | 1093470 | 75850 | 17.590 ms | 17.049 ms | 1088.8 ms | 1051.1 ms |
 
-树在 128 uniform 将叶子 exact pricing 访问减少 90%–98%，在 512 W1 减少 99.9%，说明 E3 上界和剪枝有效；但 128 的建树/遍历开销高于简单连续 sweep，near-diagonal 即使零叶子访问仍慢一个数量级。512 的 pricing 局部最多缩短约 28%，总耗时由 repeated sparse solve 主导，W1 反而慢约 5.9%，W2 约快 3.5% 但仍比 adaptive 慢约 17×。结论：E3 exact 实验完成并保留显式配置，不进入 adaptive；在 active-set solver 主体未解决前不实现 E4 adaptive pricing。
+树在 128 uniform 将叶子 exact pricing 访问减少 90%–98%，在 512 W1 减少 99.9%，说明 E3 上界和剪枝有效；但 128 的建树/遍历开销高于简单连续 sweep，near-diagonal 即使零叶子访问仍慢一个数量级。512 的 pricing 局部最多缩短约 28%，总耗时由 repeated sparse solve 主导，W1 反而慢约 5.9%，W2 约快 3.5% 但仍比 adaptive 慢约 17×。结论：E3 exact 实验完成并保留显式配置，不进入默认 adaptive；后续 E4 只把它作为低 hit-rate 的显式 oracle 选择。
+
+#### E3 persistent geometry / traversal scratch
+
+`topk_pricing_kdtree_persistent` 把树拆成两部分：由 second diagram 的 `sorted u`、`min/max u` 与 `max v` 构成的静态几何节点只建一次；随 dual 变化的叶子 `β` 和内部 `min β` 每轮自底向上更新。DFS stack 同样跨 row/round 复用。`pricing_kdtree_builds/updates` 用来验证结构行为，而不是仅凭总时间推断复用是否生效。
+
+MSVC 128 使用 3 repetitions × 7 rounds；512 uniform 的稳定结果使用 3 × 7：
+
+| 场景 | metric/k | sweep | fixed KD | persistent KD | fixed pricing | persistent pricing | builds/updates (persistent) |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| uniform 128 | W1, `k=8` | 21.579 ms | 26.263 ms | 23.812 ms | 1.182 ms | 0.826 ms | 21 / 56 |
+| uniform 128 | W2, `k=8` | 37.967 ms | 38.042 ms | 36.806 ms | 1.976 ms | 1.552 ms | 21 / 70 |
+| near-diagonal 512 | W1, `k=32` | 2.901 ms | 3.503 ms | 3.526 ms | 0.810 ms | 0.618 ms | 21 / 21 |
+| near-diagonal 512 | W2, `k=32` | 2.033 ms | 2.806 ms | 2.641 ms | 0.740 ms | 0.522 ms | 21 / 21 |
+| uniform 512 | W1, `k=32` | 940.350 ms | 903.941 ms | 933.965 ms | 10.048 ms | 10.185 ms | 21 / 63 |
+| uniform 512 | W2, `k=32` | 1902.483 ms | 1861.722 ms | 1848.513 ms | 31.265 ms | 29.932 ms | 21 / 91 |
+
+复用在 128 uniform 和 512 near-diagonal 能把 tree pricing 局部降低约 21%–30%，说明 allocation/几何摘要确有成本；但 near-diagonal 仍比 sweep 慢 30%–73%。512 uniform 的 3×7 稳定复测中，W1 pricing 与 fixed KD 持平且 total 慢 3.3%，W2 pricing 只快 4.3%、total 快 0.7%。这不足以改变 E3 的端到端结论，也说明把静态树继续下沉到公共 `PreparedDiagram` 不值得增加发布 API/常驻内存。分支保留为显式 exact 对照，不进入 E4 或默认 adaptive。
+
+### E4 adaptive pricing oracle
+
+`topk_pricing_adaptive` 是独立 active-set 配置，不修改发布版默认 dispatcher。它先采样 rotated geometric window density：高密度 `>=0.75` 使用 scalar full scan；其余场景先使用 sweep。规模至少 256、window density 至少 0.02，且上一轮 violation/priced hit rate 小于 2% 时，下一轮切到 KD-tree。exact-guarded SIMD 因 E1 负优化被明确排除。
+
+路由统计验证了三条分支：128 uniform 全部走 sweep；128 clustered 全部走 full scan；512 uniform W1/W2 在后期低 hit-rate round 各切换一次 KD-tree；512 near-diagonal 因 window density 约 0.006 保持 sweep，避免“零叶子但建树仍贵”的 E3 退化。
+
+| 场景 | metric/k | fixed sweep | fixed full | E4 router | fixed sweep pricing | E4 pricing | oracle rounds |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | --- |
+| uniform 128 | W1, `k=8` | 18.685 ms | 22.944 ms | 23.196 ms | 0.511 ms | 0.741 ms | 56 sweep |
+| uniform 128 | W2, `k=8` | 33.782 ms | 37.697 ms | 36.901 ms | 0.884 ms | 0.921 ms | 70 sweep |
+| uniform 512 | W1, `k=32` | 898.542 ms | — | 954.833 ms | 13.797 ms | 12.161 ms | 10 sweep + 5 KD |
+| uniform 512 | W2, `k=32` | 1491.864 ms | — | 1572.092 ms | 22.921 ms | 23.182 ms | 15 sweep + 5 KD |
+| clustered 128 | W1, `k=32` | 87.671 ms | 85.315 ms | 83.880 ms | 3.087 ms | 1.588 ms | 77 full |
+| clustered 128 | W2, `k=32` | 200.546 ms | 193.262 ms | 197.425 ms | 5.824 ms | 5.366 ms | 98 full |
+| near-diagonal 512 | W1, `k=32` | 3.108 ms | — | 2.873 ms | 0.115 ms | 0.145 ms | 21 sweep |
+| near-diagonal 512 | W2, `k=32` | 2.219 ms | — | 2.136 ms | 0.099 ms | 0.118 ms | 21 sweep |
+
+E4 能避免已知明显错误的 oracle 选择，并在 512 W1 把 pricing 局部降低约 12%；但 total 仍由 repeated restricted solve 主导，所有局部差异都没有形成跨 metric、跨分布稳定的端到端胜出。结论：E4 exact router 实验完成，保留显式配置，不进入已冻结的默认 adaptive。
 
 ## B3 fixed-small-degree adjacency 实验
 
@@ -435,12 +530,106 @@ parallel sparse 相对串行 sparse 在多个中型分量上可快约 1.9–3.5�
 
 同一 dispatcher 修改不影响 density `0.212–0.220` 的 uniform 512，仍跳过 component 并走原 dense matcher。该结构修正进入 adaptive。
 
-## 尚未完成的第二轮
+## MSVC LTO 工程实验
 
-以下仍是 `../proposals/wasserstein第二阶段.md` 的未完成项，不能把当前状态称为完整 Wasserstein 优化结束：
+仓库已有 `BOTTLENECK_ENABLE_LTO=1`，对应 compile `/O2 /GL`、link `/LTCG`。本轮用完全相同源码分别构建 O2 与 LTO 二进制；每个场景按 O2→LTO→LTO→O2 的 ABBA 进程顺序运行，进程内部仍使用相同随机种子和多轮配置随机顺序。LTO 二进制的 72 配置 exact 回归全部通过。
 
-1. 更高效的增量最短路/负环算法与 E4 adaptive pricing（matching、residual 和 scratch 持久化 baseline 已完成，确认容器复用不是瓶颈；active-set 各路径因端到端负优化不进入 adaptive）；
-2. GUDHI/POT exact 和 Hera exact 四层外部基线；
-3. real persistence diagrams。
+下表时间为两次独立进程 median 的平均；uniform 128 和 near-diagonal 512 使用 3 repetitions × 15 rounds，uniform 512 active-set 使用 1 × 7：
 
-这些完成并重新跑完整 8–8192 median/p95 矩阵后，才能按第二阶段文档的标准宣告整体完成。
+| 场景 | 路径 | metric | O2 | LTO | LTO/O2 |
+| --- | --- | --- | ---: | ---: | ---: |
+| uniform 128 | adaptive | W1 | 1.730 ms | 1.700 ms | 0.983× |
+| uniform 128 | adaptive | W2 | 2.200 ms | 2.133 ms | 0.970× |
+| near-diagonal 512 | adaptive | W1 | 0.939 ms | 0.956 ms | 1.018× |
+| near-diagonal 512 | adaptive | W2 | 0.744 ms | 0.869 ms | 1.167× |
+| uniform 512 | persistent KD active-set, `k=32` | W1 | 932.249 ms | 897.598 ms | 0.963× |
+| uniform 512 | persistent KD active-set, `k=32` | W2 | 1659.529 ms | 1546.389 ms | 0.932× |
+
+LTO 对大 active-set solver 有 3.7%–6.8% 收益，说明跨翻译单元优化在长 solver path 上确实可测；但 small dense 的收益只有 1.7%–3.0%，near-diagonal adaptive 则退化，且 W2 退化达 16.7%。结论：LTO 工程实验完成；保留已有显式构建开关供特定部署选择，不把它设为发布默认，也不把局部 active-set 收益外推到完整 adaptive kernel。
+
+## Sparse SAP contiguous arena 工程实验
+
+`sparse_sap_arena` 与 clean `sparse_sap` 使用相同 active vertex compact、可行势、non-negative reduced-cost Dijkstra、负 path 停止条件和 matching 重建。差别只在存储：先统计每个 residual node 的精确 degree，再一次性构造 contiguous edge arena；`distance/previous` 数组和 binary heap 跨 augmentation 清空复用。`sparse_arena_builds`、`sparse_scratch_reuses`、`sparse_heap_growths` 与 `peak_sparse_arena_bytes` 验证实际走到实验分支，并暴露 reserve 不足时发生的 heap 扩容，而不是用总时间反推分配行为。
+
+MSVC 使用同进程随机轮序；128 与两个 sparse 512 场景为 5 repetitions × 21 rounds，uniform/clustered 512 为 3 × 7。下表是端到端 median：
+
+| 场景 | metric | clean sparse SAP | contiguous arena | arena/clean | arena p95/clean p95 |
+| --- | --- | ---: | ---: | ---: | ---: |
+| uniform 128 | W1 | 8.018 ms | 7.096 ms | 0.885× | 0.851× |
+| uniform 128 | W2 | 8.066 ms | 7.650 ms | 0.948× | 0.877× |
+| uniform 512 | W1 | 264.643 ms | 236.888 ms | 0.895× | 0.924× |
+| uniform 512 | W2 | 299.184 ms | 276.544 ms | 0.924× | 0.901× |
+| near-diagonal 512 | W1 | 31.495 ms | 30.173 ms | 0.958× | 0.961× |
+| near-diagonal 512 | W2 | 33.051 ms | 31.330 ms | 0.948× | 0.943× |
+| adversarial-sparse 512 | W1 | 25.628 ms | 24.844 ms | 0.969× | 0.963× |
+| adversarial-sparse 512 | W2 | 25.602 ms | 24.719 ms | 0.966× | 0.972× |
+| adversarial-sparse 2048 | W1 | 513.221 ms | 502.572 ms | 0.979× | 0.949× |
+| adversarial-sparse 2048 | W2 | 513.705 ms | 494.631 ms | 0.963× | 1.023× |
+| clustered 512 | W1 | 946.979 ms | 824.886 ms | 0.871× | 1.010× |
+| clustered 512 | W2 | 1345.806 ms | 1269.663 ms | 0.943× | 0.936× |
+
+除 fully clustered 外，预留 `8N` heap slots 后上述 MSVC workload 的 `sparse_heap_growths` 均为 0；clustered 仍平均每次调用扩容约 2.7–4 次，且 clustered W1 与 adversarial-sparse 2048 W2 的 p95 略退化，说明重复 scratch 分配已经消除，但 duplicate-entry heap 的峰值与尾延迟仍由输入决定。`peak_sparse_arena_bytes` 从 adversarial-sparse 512 的约 196 KiB、2048 的约 784 KiB，到 clustered 512 的约 16.5–16.7 MiB；这是实验 solver 的可见工作区，不包含 clean vector-of-vectors/PQ 的未统计容量，不能直接当作两者的总内存差。
+
+GCC/MinGW 对同一源码给出反证：uniform 128 的 arena/clean median 为 W1 `1.007×`、W2 `0.980×`，uniform 512 为 W1 `1.004×`、W2 `0.999×`，p95 同样有正有负。连续 arena 因而是 MSVC 上稳定的 3%–13% 局部正优化，但没有形成跨编译器 winner。结论：custom allocator/arena 项完成，保留 `arena_sparse` 显式 exact 配置，不进入已冻结的 adaptive/default。
+
+## MSVC PGO 工程实验
+
+新增 `scripts/build-wasserstein-pgo.cmd`，把 `/O2 /GL + /GENPROFILE` 和 `/O2 /GL + /USEPROFILE` 分成显式 instrument/optimize 两阶段。instrument 构建会把对应版本的 `pgort140.dll` 复制到临时 build 目录，避免离开 Developer Prompt 后 instrumented EXE 在 Windows loader 阶段找不到 runtime。第三个可选参数允许 test executable 复用 benchmark PGD，从而对真实 benchmark profile 做完整 exact 回归。
+
+训练集使用冻结的 `adaptive`，覆盖 `64/128/256/512`、两种 metric 与 benchmark 内所有 synthetic pattern，每个场景 1 repetition × 1 round；额外包含一个 8 点 separated 启动探针。两份 `.pgc` 共约 442 KiB，计数 overflow 为 0。`/USEPROFILE` 链接日志确认 3592/3592 个函数使用 profile 数据，6 个热点函数按 speed 编译，其余按 size；用同一 benchmark PGD 链接的 tests 有 3116/3592 个函数命中 profile，73 配置完整回归通过。
+
+评估仍按 O2→PGO→PGO→O2 的 ABBA 进程顺序。表中 O2/PGO 各为两次独立进程 median 或 p95 的平均；128/near-diagonal/component 使用 5 repetitions × 21 rounds，uniform 512 使用 3 × 7：
+
+| 场景 | metric | O2 median | PGO median | PGO/O2 | O2 p95 | PGO p95 | p95 比例 |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| uniform 128 | W1 | 0.885 ms | 0.824 ms | 0.931× | 1.176 ms | 1.241 ms | 1.055× |
+| uniform 128 | W2 | 1.167 ms | 1.069 ms | 0.916× | 1.713 ms | 1.548 ms | 0.903× |
+| uniform 512 | W1 | 21.994 ms | 19.232 ms | 0.874× | 22.727 ms | 19.874 ms | 0.874× |
+| uniform 512 | W2 | 50.336 ms | 44.039 ms | 0.875× | 52.222 ms | 45.805 ms | 0.877× |
+| near-diagonal 512 | W1 | 0.483 ms | 0.496 ms | 1.027× | 0.573 ms | 0.759 ms | 1.325× |
+| near-diagonal 512 | W2 | 0.443 ms | 0.444 ms | 1.002× | 0.543 ms | 0.669 ms | 1.232× |
+| multi-component 512 | W1 | 1.216 ms | 1.227 ms | 1.009× | 1.809 ms | 1.619 ms | 0.895× |
+| multi-component 512 | W2 | 1.261 ms | 1.293 ms | 1.025× | 1.486 ms | 1.728 ms | 1.162× |
+
+PGO 对训练中占 CPU 较多的 uniform dense matcher 有 6.9%–12.6% median 收益，512 uniform 的 p95 也稳定下降约 12%；但 near-diagonal 的 median 不升反降，p95 退化 23%–32%，component W2 的 p95 也退化 16%。即使训练集已经覆盖这些 pattern，链接器的 hot/cold 布局仍明显偏向累计指令占比更高的 dense 路径。结论：PGO 项完成，保留可复现的显式脚本，不进入发布默认，也不把某一固定训练 corpus 当作通用 wheel 构建配置。
+
+## 8–8192 scalable synthetic slice
+
+冻结的 `adaptive` 在 `N=8/16/32/64/128/256/512/1024/2048/4096/8192` 上完成 separated、adversarial-sparse 与固定 `32×32` multi-component 三类可扩展输入的 3 repetitions × 7 randomized rounds。计时对象是 prepared C++ distance call，prepare 单独报告；下表摘录端点与 512 中间点，单位均为 μs：
+
+| 场景 | N | W1 median / p95 | W2 median / p95 | peak graph bytes |
+| --- | ---: | ---: | ---: | ---: |
+| separated | 8 | 1.600 / 3.667 | 1.300 / 1.500 | 512 B |
+| separated | 512 | 11.933 / 14.533 | 13.233 / 17.733 | 4.0 KiB |
+| separated | 8192 | 288.633 / 317.067 | 294.933 / 340.133 | 64.0 KiB |
+| adversarial-sparse | 8 | 4.067 / 8.133 | 4.167 / 4.900 | 512 B |
+| adversarial-sparse | 512 | 192.900 / 293.733 | 190.433 / 190.900 | 10.0 KiB |
+| adversarial-sparse | 8192 | 3155.767 / 3343.100 | 3263.100 / 4504.000 | 160.0 KiB |
+| multi-component | 8 | 4.200 / 6.967 | 4.133 / 5.067 | 512 B |
+| multi-component | 512 | 1203.167 / 1795.767 | 1197.567 / 1875.833 | 196.0 KiB |
+| multi-component | 8192 | 18637.300 / 19952.533 | 19744.600 / 20998.033 | 3.06 MiB |
+
+三条路径均保持线性或近线性增长，没有 fallback 或 objective mismatch；multi-component 8192 包含 256 个独立 `32×32` dense component，验证了 512 点 dispatcher 修正可扩展到更多分量。这完成的是大 N sparse/component slice，不是 full dense 矩阵：uniform、clustered、adversarial-dense 的 exact matching 与 reference 在 8192 点会产生不合理的计算量，不能用跳过或 timeout 数字伪装成已测结果。
+
+## 主线冻结与公开速度复跑
+
+2026-08-17 将当前 `adaptive` 冻结为主线。candidate parallel、W1 large-dense row reduction、duplicate compression 和 component dispatcher 修正等跨工作负载赢家已经位于默认路径；`sparse_sap_arena`、PGO、persistent KD 和 active-set pricing 系列保留为显式 exact 实验，不进入默认 dispatcher。
+
+使用当前源码构建的 MSVC wheel（SHA-256 `dffa357a504121538d63e3fea3675054430f67e04f91c35828f29a18d150f641`）重新执行仓库既有跨库 Python 流程：1 个 prepared query 对 64 个 targets，固定种子 `20260812`，覆盖五类输入和 `N=8/32/128/512`；8–128 点每配置 11 轮、512 点 5 轮，库顺序逐轮随机，公开值合并同一规模五类输入的全部计时轮次后取 median。环境为 Windows 11、Python 3.12.13、单线程、GUDHI 3.13.0、giotto-tda 0.6.2。
+
+| N | Topp W1-L∞ | GUDHI W1-L∞ | Topp/GUDHI | giotto-tda 默认 W2 | Topp/giotto-tda |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 8 | 1.104 ms | 15.344 ms | 13.90× | 11.758 ms | 10.65× |
+| 32 | 3.246 ms | 21.727 ms | 6.69× | 114.656 ms | 35.33× |
+| 128 | 10.101 ms | 106.639 ms | 10.56× | 1,000.598 ms | 99.06× |
+| 512 | 12.689 ms | 2,986.669 ms | 235.37× | 8,808.310 ms | 694.17× |
+
+20 个 Wasserstein 配置共 1280 个 Topp/GUDHI exact 输出的 `not_close` 为 0。当前源码重新构建后的 MSVC C++ 完整 Wasserstein test executable 通过；当前 wheel 的 Python API、独立 brute-force 及启用的 GUDHI/POT oracle 共 21 项通过。公开表是五分布汇总，不代表每个分布都胜出：512 uniform 的 Topp/GUDHI median 为 `2083.414/1358.772 ms`，clustered 为 `1497.535/1333.323 ms`，仍是后续 dense matcher 工作的明确边界。
+
+## 冻结后的已知边界
+
+下列项目不阻塞本次主线冻结，但仍属于未来研究范围，当前文档不把它们描述成已经完成：
+
+1. Hera exact 四层外部基线与 real persistence diagrams；
+2. uniform/near-diagonal/clustered/duplicate-heavy/imbalanced/adversarial-dense 的完整 8–8192 median/p95；当前只完成到各 exact 路径在本机可合理执行的规模，以及上述 scalable slice；
+3. 512 点 uniform/clustered dense 输入仍可能慢于 GUDHI，公开汇总倍数不能外推到这些单独分布。

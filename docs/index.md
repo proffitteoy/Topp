@@ -86,17 +86,17 @@ print(topp.wasserstein_distance(x, y, order=2, internal_p=2))
 
 ## Python 批量距离性能
 
-下表是 1 个查询图与 64 个目标图的批量中位耗时，单位为毫秒；每个规模汇总 uniform、near-diagonal、clustered、duplicate-heavy 和 separated 五类合成输入，数值越低越快。
+下表是 1 个查询图与 64 个目标图的批量中位耗时，单位为毫秒；每个规模合并 uniform、near-diagonal、clustered、duplicate-heavy 和 separated 五类合成输入的全部计时轮次后取中位数，数值越低越快。
 
 | 距离 | 每图点数 | Topp | GUDHI | giotto-tda | Topp 相对 GUDHI | Topp 相对 giotto-tda |
 |---|---:|---:|---:|---:|---:|---:|
-| Bottleneck | 8 | **1.128** | 10.942 | 16.032 | **9.70×** | **14.21×** |
-| Bottleneck | 32 | **4.586** | 45.774 | 94.884 | **9.98×** | **20.69×** |
-| Bottleneck | 128 | **62.490** | 237.496 | 590.716 | **3.80×** | **9.45×** |
-| Bottleneck | 512 | **709.542** | 1,907.244 | 4,297.638 | **2.69×** | **6.06×** |
-| Wasserstein | 8 | **1.316** | 17.513 | 13.699 | **13.31×** | **10.41×** |
-| Wasserstein | 32 | **3.115** | 22.766 | 118.450 | **7.31×** | **38.03×** |
-| Wasserstein | 128 | **10.308** | 108.834 | 1,023.854 | **10.56×** | **99.33×** |
-| Wasserstein | 512 | **16.332** | 3,430.789 | 9,456.923 | **210.06×** | **579.03×** |
+| Bottleneck | 8 | **1.059** | 10.729 | 14.434 | **10.13×** | **13.62×** |
+| Bottleneck | 32 | **4.547** | 43.860 | 90.804 | **9.65×** | **19.97×** |
+| Bottleneck | 128 | **16.632** | 235.851 | 558.250 | **14.18×** | **33.56×** |
+| Bottleneck | 512 | **236.045** | 1,882.070 | 3,639.137 | **7.97×** | **15.42×** |
+| Wasserstein | 8 | **1.104** | 15.344 | 11.758 | **13.90×** | **10.65×** |
+| Wasserstein | 32 | **3.246** | 21.727 | 114.656 | **6.69×** | **35.33×** |
+| Wasserstein | 128 | **10.101** | 106.639 | 1,000.598 | **10.56×** | **99.06×** |
+| Wasserstein | 512 | **12.689** | 2,986.669 | 8,808.310 | **235.37×** | **694.17×** |
 
-测试环境为 Windows 11、Python 3.12、单线程，Topp 0.1.0、GUDHI 3.13.0、giotto-tda 0.6.2。Bottleneck 表比较各库默认调用（Topp 为 exact，GUDHI `e=None` 和 giotto-tda 为 approximate）；Wasserstein 中 Topp/GUDHI 为 exact $W_{1,\infty}$，giotto-tda 默认是 approximate $W_2$，因此其数字只表示默认 Python API 的调用速度，不是同一数学任务的算法排名。
+测试于 2026-08-17，环境为 Windows 11、Python 3.12.13、单线程，Topp 0.1.0 当前主线 MSVC wheel（SHA-256 `dffa357a504121538d63e3fea3675054430f67e04f91c35828f29a18d150f641`）、GUDHI 3.13.0、giotto-tda 0.6.2。Bottleneck 表比较各库默认调用（Topp 为 exact，GUDHI `e=None` 和 giotto-tda 为 approximate）；Wasserstein 中 Topp/GUDHI 为 exact $W_{1,\infty}$，giotto-tda 默认是 approximate $W_2$，因此其数字只表示默认 Python API 的调用速度，不是同一数学任务的算法排名。不同分布的耗时差异可能很大，汇总值不表示每类输入都达到相同倍数。

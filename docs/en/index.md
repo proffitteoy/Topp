@@ -85,17 +85,17 @@ Continue with the [five-minute quickstart](getting-started/quickstart.md), or se
 
 ## Python batch-distance performance
 
-Median time in milliseconds for one query diagram against 64 target diagrams. Each size pools five synthetic input families; lower is faster.
+Median time in milliseconds for one query diagram against 64 target diagrams. For each size, all timing rounds from five synthetic input families (uniform, near-diagonal, clustered, duplicate-heavy, and separated) are pooled before taking the median; lower is faster.
 
 | Distance | Points per diagram | Topp | GUDHI | giotto-tda | Topp vs GUDHI | Topp vs giotto-tda |
 |---|---:|---:|---:|---:|---:|---:|
-| Bottleneck | 8 | **1.128** | 10.942 | 16.032 | **9.70×** | **14.21×** |
-| Bottleneck | 32 | **4.586** | 45.774 | 94.884 | **9.98×** | **20.69×** |
-| Bottleneck | 128 | **62.490** | 237.496 | 590.716 | **3.80×** | **9.45×** |
-| Bottleneck | 512 | **709.542** | 1,907.244 | 4,297.638 | **2.69×** | **6.06×** |
-| Wasserstein | 8 | **1.316** | 17.513 | 13.699 | **13.31×** | **10.41×** |
-| Wasserstein | 32 | **3.115** | 22.766 | 118.450 | **7.31×** | **38.03×** |
-| Wasserstein | 128 | **10.308** | 108.834 | 1,023.854 | **10.56×** | **99.33×** |
-| Wasserstein | 512 | **16.332** | 3,430.789 | 9,456.923 | **210.06×** | **579.03×** |
+| Bottleneck | 8 | **1.059** | 10.729 | 14.434 | **10.13×** | **13.62×** |
+| Bottleneck | 32 | **4.547** | 43.860 | 90.804 | **9.65×** | **19.97×** |
+| Bottleneck | 128 | **16.632** | 235.851 | 558.250 | **14.18×** | **33.56×** |
+| Bottleneck | 512 | **236.045** | 1,882.070 | 3,639.137 | **7.97×** | **15.42×** |
+| Wasserstein | 8 | **1.104** | 15.344 | 11.758 | **13.90×** | **10.65×** |
+| Wasserstein | 32 | **3.246** | 21.727 | 114.656 | **6.69×** | **35.33×** |
+| Wasserstein | 128 | **10.101** | 106.639 | 1,000.598 | **10.56×** | **99.06×** |
+| Wasserstein | 512 | **12.689** | 2,986.669 | 8,808.310 | **235.37×** | **694.17×** |
 
-Measured on Windows 11 with Python 3.12 and one thread, using Topp 0.1.0, GUDHI 3.13.0, and giotto-tda 0.6.2. Bottleneck uses each library's default call (Topp is exact; GUDHI `e=None` and giotto-tda are approximate). For Wasserstein, Topp and GUDHI compute exact $W_{1,\infty}$, while giotto-tda defaults to approximate $W_2$; that column therefore describes default Python API speed, not an algorithm ranking for the same mathematical task.
+Measured on 2026-08-17 on Windows 11 with Python 3.12.13 and one thread, using the current-mainline Topp 0.1.0 MSVC wheel (SHA-256 `dffa357a504121538d63e3fea3675054430f67e04f91c35828f29a18d150f641`), GUDHI 3.13.0, and giotto-tda 0.6.2. Bottleneck uses each library's default call (Topp is exact; GUDHI `e=None` and giotto-tda are approximate). For Wasserstein, Topp and GUDHI compute exact $W_{1,\infty}$, while giotto-tda defaults to approximate $W_2$; that column therefore describes default Python API speed, not an algorithm ranking for the same mathematical task. Runtime varies substantially by input family, so the pooled result does not imply the same speedup for every distribution.

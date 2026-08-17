@@ -38,7 +38,8 @@ std::vector<SolverConfig> all_configs() {
   std::vector<SolverConfig> result;
   for (CandidateStrategy candidates : {CandidateStrategy::sort_all, CandidateStrategy::sort_unique,
                                        CandidateStrategy::sort_unique_clipped,
-                                       CandidateStrategy::sort_unique_greedy_clipped}) {
+                                       CandidateStrategy::sort_unique_greedy_clipped,
+                                       CandidateStrategy::x_sweep_clipped}) {
     for (ThresholdStrategy threshold : {ThresholdStrategy::binary, ThresholdStrategy::gudhi_alpha,
                                         ThresholdStrategy::exponential,
                                         ThresholdStrategy::quickselect,
@@ -66,8 +67,9 @@ std::vector<SolverConfig> all_configs() {
                                           MatcherStrategy::mandatory_flow,
                                           MatcherStrategy::multiplicity_flow,
                                           MatcherStrategy::adaptive,
-                                          MatcherStrategy::hopcroft_karp,
-                                          MatcherStrategy::greedy_hopcroft_karp}) {
+                                           MatcherStrategy::hopcroft_karp,
+                                           MatcherStrategy::greedy_hopcroft_karp,
+                                           MatcherStrategy::mandatory_sparse_flow}) {
             for (VertexOrder order : {VertexOrder::natural, VertexOrder::degree_ascending}) {
               result.push_back(SolverConfig{candidates, threshold, distance, adjacency, matcher, order});
             }

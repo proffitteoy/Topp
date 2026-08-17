@@ -23,11 +23,15 @@ enum class WassersteinCandidateStrategy {
   sweep_binary,
   sweep_two_pointer,
   topk_pricing_full_scan,
+  topk_pricing_simd,
   topk_pricing_sweep,
   topk_pricing_kdtree,
+  topk_pricing_kdtree_persistent,
+  topk_pricing_adaptive,
   topk_pricing_sweep_incremental,
   topk_pricing_sweep_persistent,
   topk_pricing_sweep_dynamic,
+  topk_pricing_sweep_dynamic_batched,
   adaptive,
 };
 
@@ -51,6 +55,7 @@ enum class WassersteinMatcherStrategy {
   dense_sap_row_reduction,
   dense_sap_jv_reduction,
   sparse_sap,
+  sparse_sap_arena,
   adaptive,
 };
 
@@ -96,11 +101,24 @@ struct WassersteinStats {
   std::uint64_t active_columns = 0;
   std::uint64_t augmentations = 0;
   std::uint64_t pricing_rounds = 0;
+  std::uint64_t pricing_full_scan_rounds = 0;
+  std::uint64_t pricing_simd_rounds = 0;
+  std::uint64_t pricing_sweep_rounds = 0;
+  std::uint64_t pricing_kdtree_rounds = 0;
+  std::uint64_t pricing_kdtree_builds = 0;
+  std::uint64_t pricing_kdtree_updates = 0;
   std::uint64_t priced_edges = 0;
   std::uint64_t pricing_violations = 0;
   std::uint64_t peak_materialized_edges = 0;
   std::uint64_t max_degree = 0;
   std::uint64_t sparse_fallbacks = 0;
+  std::uint64_t sparse_arena_builds = 0;
+  std::uint64_t sparse_scratch_reuses = 0;
+  std::uint64_t sparse_heap_growths = 0;
+  std::uint64_t peak_sparse_arena_bytes = 0;
+  std::uint64_t dynamic_inserted_edges = 0;
+  std::uint64_t dynamic_dijkstra_runs = 0;
+  std::uint64_t dynamic_batch_groups = 0;
   std::uint64_t jv_fallbacks = 0;
   std::uint64_t component_count = 0;
   std::uint64_t largest_component = 0;

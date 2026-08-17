@@ -32,13 +32,26 @@ build\manual\wasserstein_core_bench.exe --repetitions 5 --rounds 7 --max-size 12
 build\manual\wasserstein_batch_bench.exe --repetitions 5 --rounds 21
 ```
 
+MSVC PGO 只作为显式内核实验，使用独立目录完成 instrument、训练和 optimize；instrument 构建会同时复制所需的 `pgort140.dll`：
+
+```powershell
+$env:BOTTLENECK_BUILD_DIR = 'build\pgo-msvc'
+.\scripts\build-wasserstein-pgo.cmd instrument bench
+.\build\pgo-msvc\wasserstein_core_bench.exe --min-size 64 --max-size 512 --repetitions 1 --rounds 1 --experiments adaptive
+.\scripts\build-wasserstein-pgo.cmd optimize bench
+.\scripts\build-wasserstein-pgo.cmd optimize tests wasserstein_core_bench
+.\build\pgo-msvc\wasserstein_core_tests.exe
+```
+
+最后两条让完整 tests 复用 benchmark 训练得到的 PGD；它验证 profile-guided binary 的 exact 语义，但不表示该训练 corpus 对所有输入都有性能收益。
+
 `bottleneck_grid_bench` 覆盖 uniform、near-diagonal、clustered、repeated、separated，以及对称/非对称 `8–256` 点输入，并输出 exact cross-edge density。多轮模式会打乱配置执行顺序并报告 median/p95；单轮输出只用于探索，不作为稳定回归阈值。
 
 `bottleneck_large_bench` 覆盖 `32–4096` 点、稠密/稀疏/重复/分离分布和非对称输入，对比 geometric refinement、全候选 geometric matcher、默认 dispatcher 与旧 adaptive 路径。`--max-points N` 可限制交叉区实验；当前输出是固定种子多输入的均值，仍属于内核探索数据。
 
 `bottleneck_multiplicity_bench` 固定 raw N 并扫描 exact duplicate ratio，对比 geometric default、显式 multiplicity capacity flow、当前 adaptive router 和旧 quickselect。配置逐轮随机顺序，输出 median/p95、unique group 数、移除点数和 capacity edge 数；可用 `--min-duplicate-ratio` 与 `--max-points` 缩小 crossover 扫描。
 
-`wasserstein_core_bench` 覆盖 uniform、near-diagonal、clustered、separated、duplicate-heavy、imbalanced、adversarial-dense、adversarial-sparse 和 32×32 多分量专用输入的 `8–8192` 规模清单。配置按轮随机执行并报告 median/p95，同时拆分 prepare/candidate/graph/component/solver/pricing 时间，并记录 pricing rounds、priced/violated/materialized edges、max degree 与 peak graph bytes。可用 `--min-size`、`--max-size`、`--pattern`、`--metric`、`--repetitions` 和 `--rounds` 缩小实验矩阵；`--experiments priced_topk8,priced_sweep_topk8,priced_kdtree_topk8,priced_incremental_topk8,priced_persistent_topk8,adaptive` 可在同一进程中随机轮序配对 full-scan、sweep、KD-tree、matching-incremental、persistent-residual cycle-cancel 与默认配置，五档 top-k 名称均为 `2/4/8/16/32`。component 并行对照名为 `parallel_component_dense` / `parallel_component_sparse`；旧的单值 `--experiment` 仍兼容。超过 512 的普通分布只有在显式选择 priced 实验时才会开放，`multi_component` 只开放 component 专用配置，其他 dense baseline 继续跳过。
+`wasserstein_core_bench` 覆盖 uniform、near-diagonal、clustered、separated、duplicate-heavy、imbalanced、adversarial-dense、adversarial-sparse 和 32×32 多分量专用输入的 `8–8192` 规模清单。配置按轮随机执行并报告 median/p95，同时拆分 prepare/candidate/graph/component/solver/pricing 时间，并记录 pricing rounds、priced/violated/materialized edges、各 oracle round 数、KD build/update 数、sparse arena build/scratch reuse/heap growth、dynamic inserted edges/Dijkstra runs/batch groups、max degree、peak arena bytes 与 peak graph bytes。可用 `--min-size`、`--max-size`、`--pattern`、`--metric`、`--repetitions` 和 `--rounds` 缩小实验矩阵；`--experiments sweep_csr_sparse,arena_sparse` 可随机轮序配对 clean sparse SAP 与 contiguous residual arena，`--experiments priced_dynamic_topk8,priced_dynamic_batched_topk8` 可配对逐边与按目标 column 批量化的 reduced-cost Dijkstra，`--experiments priced_topk8,priced_simd_topk8,priced_sweep_topk8,priced_kdtree_topk8,priced_kdtree_persistent_topk8,priced_adaptive_topk8,priced_incremental_topk8,priced_persistent_topk8,adaptive` 可配对 scalar full-scan、exact-guarded AVX2 full-scan、sweep、KD-tree、persistent KD geometry/scratch、E4 oracle router、matching-incremental、persistent-residual cycle-cancel 与默认配置，五档 top-k 名称均为 `2/4/8/16/32`。component 并行对照名为 `parallel_component_dense` / `parallel_component_sparse`；旧的单值 `--experiment` 仍兼容。超过 512 的普通分布只有在显式选择 priced 实验时才会开放，`multi_component` 只开放 component 专用配置，其他 dense baseline 继续跳过。
 
 `wasserstein_batch_bench` 比较 one-shot、手写 prepared loop、native caller-buffer、显式 reusable workspace 和 native allocated-vector。五种模式先预热，再逐轮随机执行并报告 median/p95；固定顺序的单次数字不能用于判断 batch/workspace 收益。
 

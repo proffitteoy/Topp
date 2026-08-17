@@ -1109,6 +1109,8 @@ class Dinic {
   std::vector<std::size_t> cursor_;
 };
 
+int flow_capacity(std::size_t value);
+
 bool mandatory_flow_within(const DistanceTable& table, double threshold, SolverStats* stats) {
   const std::size_t n = table.first.size();
   const std::size_t m = table.second.size();
@@ -1144,6 +1146,92 @@ bool mandatory_flow_within(const DistanceTable& table, double threshold, SolverS
     }
   }
   flow.add_edge(sink, source, static_cast<int>(n + m));
+
+  int required = 0;
+  for (int vertex = 0; vertex <= sink; ++vertex) {
+    if (demand[static_cast<std::size_t>(vertex)] > 0) {
+      flow.add_edge(super_source, vertex, demand[static_cast<std::size_t>(vertex)]);
+      required += demand[static_cast<std::size_t>(vertex)];
+    } else if (demand[static_cast<std::size_t>(vertex)] < 0) {
+      flow.add_edge(vertex, super_sink, -demand[static_cast<std::size_t>(vertex)]);
+    }
+  }
+  return flow.max_flow(super_source, super_sink, stats) == required;
+}
+
+bool mandatory_sparse_flow_within(const DistanceTable& table, double threshold,
+                                  SolverStats* stats) {
+  const std::size_t n = table.first.size();
+  const std::size_t m = table.second.size();
+  const int source = static_cast<int>(n + m);
+  const int sink = source + 1;
+  const int super_source = sink + 1;
+  const int super_sink = super_source + 1;
+  Dinic flow(static_cast<std::size_t>(super_sink + 1));
+  std::vector<int> demand(static_cast<std::size_t>(super_sink + 1), 0);
+  std::vector<std::uint8_t> first_mandatory(n, 0);
+  std::vector<std::uint8_t> second_mandatory(m, 0);
+
+  const auto add_bounded_edge = [&](int from, int to, int lower, int upper) {
+    flow.add_edge(from, to, upper - lower);
+    demand[static_cast<std::size_t>(from)] -= lower;
+    demand[static_cast<std::size_t>(to)] += lower;
+  };
+
+  std::size_t mandatory_count = 0;
+  for (std::size_t left = 0; left < n; ++left) {
+    first_mandatory[left] = static_cast<std::uint8_t>(
+        table.first_diagonal[left] > threshold);
+    mandatory_count += first_mandatory[left];
+    add_bounded_edge(source, static_cast<int>(left), first_mandatory[left], 1);
+  }
+  for (std::size_t right = 0; right < m; ++right) {
+    second_mandatory[right] = static_cast<std::uint8_t>(
+        table.second_diagonal[right] > threshold);
+    mandatory_count += second_mandatory[right];
+    add_bounded_edge(static_cast<int>(n + right), sink, second_mandatory[right], 1);
+  }
+  if (stats != nullptr) {
+    stats->mandatory_vertices += mandatory_count;
+    stats->optional_pairs_pruned +=
+        (n - static_cast<std::size_t>(std::count(first_mandatory.begin(),
+                                                first_mandatory.end(), std::uint8_t{1}))) *
+        (m - static_cast<std::size_t>(std::count(second_mandatory.begin(),
+                                                second_mandatory.end(), std::uint8_t{1})));
+  }
+  if (mandatory_count == 0) {
+    return true;
+  }
+
+  for (std::size_t left = 0; left < n; ++left) {
+    const double birth = table.first_births[left];
+    const double lower = std::nextafter(
+        birth - threshold, -std::numeric_limits<double>::infinity());
+    const double upper = std::nextafter(
+        birth + threshold, std::numeric_limits<double>::infinity());
+    auto begin = std::lower_bound(table.second_sorted_births.begin(),
+                                  table.second_sorted_births.end(), lower);
+    const auto end = std::upper_bound(begin, table.second_sorted_births.end(), upper);
+    for (; begin != end; ++begin) {
+      const std::size_t position = static_cast<std::size_t>(
+          begin - table.second_sorted_births.begin());
+      const std::size_t right = table.second_birth_order[position];
+      if (first_mandatory[left] == 0 && second_mandatory[right] == 0) {
+        continue;
+      }
+      if (stats != nullptr) {
+        ++stats->x_window_candidates;
+        ++stats->adjacency_checks;
+      }
+      if (table.cross_distance(left, right) <= threshold) {
+        flow.add_edge(static_cast<int>(left), static_cast<int>(n + right), 1);
+        if (stats != nullptr) {
+          ++stats->capacity_edges;
+        }
+      }
+    }
+  }
+  flow.add_edge(sink, source, flow_capacity(n + m));
 
   int required = 0;
   for (int vertex = 0; vertex <= sink; ++vertex) {
@@ -1272,6 +1360,9 @@ bool finite_within(const DistanceTable& table, double threshold, const SolverCon
   if (matcher == MatcherStrategy::multiplicity_flow) {
     return multiplicity_flow_within(table, threshold, stats);
   }
+  if (matcher == MatcherStrategy::mandatory_sparse_flow) {
+    return mandatory_sparse_flow_within(table, threshold, stats);
+  }
   ThresholdGraph graph(table, threshold, config.adjacency, stats);
   if (matcher == MatcherStrategy::hopcroft_karp ||
       matcher == MatcherStrategy::greedy_hopcroft_karp) {
@@ -1311,7 +1402,37 @@ std::vector<double> candidates(const DistanceTable& table, CandidateStrategy str
     result.push_back(table.second_diagonal[index]);
   }
   std::uint64_t clipped = 0;
-  if (strategy == CandidateStrategy::sort_unique_clipped ||
+  if (strategy == CandidateStrategy::x_sweep_clipped &&
+      !multiplicity_compressed) {
+    const double upper_bound =
+        (std::max)(table.first_max_diagonal, table.second_max_diagonal);
+    std::uint64_t retained_cross = 0;
+    for (std::size_t first : first_indices) {
+      const double birth = table.first_births[first];
+      const double lower = std::nextafter(
+          birth - upper_bound, -std::numeric_limits<double>::infinity());
+      const double upper = std::nextafter(
+          birth + upper_bound, std::numeric_limits<double>::infinity());
+      auto begin = std::lower_bound(table.second_sorted_births.begin(),
+                                    table.second_sorted_births.end(), lower);
+      const auto end = std::upper_bound(begin, table.second_sorted_births.end(), upper);
+      for (; begin != end; ++begin) {
+        const std::size_t position = static_cast<std::size_t>(
+            begin - table.second_sorted_births.begin());
+        const std::size_t second = table.second_birth_order[position];
+        if (stats != nullptr) {
+          ++stats->x_window_candidates;
+        }
+        const double value = table.cross_distance(first, second);
+        if (value <= upper_bound) {
+          result.push_back(value);
+          ++retained_cross;
+        }
+      }
+    }
+    clipped = static_cast<std::uint64_t>(
+        first_indices.size() * second_indices.size()) - retained_cross;
+  } else if (strategy == CandidateStrategy::sort_unique_clipped ||
       strategy == CandidateStrategy::sort_unique_greedy_clipped) {
     double upper_bound = (std::max)(table.first_max_diagonal, table.second_max_diagonal);
     if (strategy == CandidateStrategy::sort_unique_greedy_clipped) {
@@ -1689,6 +1810,8 @@ double finite_distance(const PreparedDiagram& first, const PreparedDiagram& seco
   }
   const bool geometric_matcher = config.matcher == MatcherStrategy::geometric_hopcroft_karp;
   const bool use_x_sweep = config.adjacency == AdjacencyStrategy::x_sweep_csr ||
+                           config.candidates == CandidateStrategy::x_sweep_clipped ||
+                           config.matcher == MatcherStrategy::mandatory_sparse_flow ||
                            (config.adjacency == AdjacencyStrategy::adaptive &&
                             first.finite_points().size() + second.finite_points().size() >= 128) ||
                            geometric_matcher;
@@ -2046,6 +2169,8 @@ const char* to_string(CandidateStrategy strategy) noexcept {
       return "sort_unique_clipped";
     case CandidateStrategy::sort_unique_greedy_clipped:
       return "sort_unique_greedy_clipped";
+    case CandidateStrategy::x_sweep_clipped:
+      return "x_sweep_clipped";
   }
   return "unknown";
 }
@@ -2140,6 +2265,8 @@ const char* to_string(MatcherStrategy strategy) noexcept {
       return "greedy_hopcroft_karp";
     case MatcherStrategy::geometric_hopcroft_karp:
       return "geometric_hopcroft_karp";
+    case MatcherStrategy::mandatory_sparse_flow:
+      return "mandatory_sparse_flow";
   }
   return "unknown";
 }

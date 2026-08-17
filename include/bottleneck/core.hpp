@@ -19,6 +19,7 @@ enum class CandidateStrategy {
   sort_unique,
   sort_unique_clipped,
   sort_unique_greedy_clipped,
+  x_sweep_clipped,
 };
 
 enum class ThresholdStrategy {
@@ -66,6 +67,7 @@ enum class MatcherStrategy {
   hopcroft_karp,
   greedy_hopcroft_karp,
   geometric_hopcroft_karp,
+  mandatory_sparse_flow,
 };
 
 enum class VertexOrder {
@@ -102,6 +104,9 @@ struct SolverStats {
   std::uint64_t multiplicity_groups = 0;
   std::uint64_t multiplicity_points_removed = 0;
   std::uint64_t capacity_edges = 0;
+  std::uint64_t x_window_candidates = 0;
+  std::uint64_t mandatory_vertices = 0;
+  std::uint64_t optional_pairs_pruned = 0;
 };
 
 class PreparedDiagram {
