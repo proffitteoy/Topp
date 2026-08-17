@@ -50,4 +50,4 @@ ctest --test-dir build\scalar --output-on-failure
 - `include/`、`src/`：C++20 exact 内核；
 - `tests/python/`、`tests/*.cpp`：Python/C++ 正确性；
 - `benchmarks/`：可复现内核基准；
-- `docs/research/`：证据、历史方案和实验补丁。
+- `docs/research/`：1.0 最终状态、实验结论和历史补丁。

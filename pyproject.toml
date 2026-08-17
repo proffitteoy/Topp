@@ -7,7 +7,7 @@ build-backend = "scikit_build_core.build"
 
 [project]
 name = "topp"
-version = "0.1.0"
+version = "1.0.0"
 description = "Exact persistence-diagram Bottleneck and Wasserstein distances"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -16,7 +16,7 @@ license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 authors = [{ name = "Topp contributors" }]
 dependencies = ["numpy>=1.23"]
 classifiers = [
-  "Development Status :: 3 - Alpha",
+  "Development Status :: 5 - Production/Stable",
   "Intended Audience :: Science/Research",
   "Programming Language :: C++",
   "Programming Language :: Python :: 3",

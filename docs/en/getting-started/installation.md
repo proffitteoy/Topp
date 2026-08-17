@@ -15,7 +15,7 @@ Confirm the installed version:
 ```pycon
 >>> import topp
 >>> topp.__version__
-'0.1.0'
+'1.0.0'
 ```
 
 NumPy 1.23 or newer is installed automatically and is Topp's only runtime dependency.
@@ -40,7 +40,7 @@ cd Topp
 py -m pip install -v .
 ```
 
-Linux and macOS are not covered by CI in version 0.1.0. A successful local compilation on either platform is not currently a published support guarantee.
+Linux and macOS are not covered by release CI. A successful local compilation on either platform is not currently a published support guarantee.
 
 ## Smoke test
 

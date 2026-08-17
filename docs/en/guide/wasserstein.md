@@ -2,7 +2,7 @@
 
 [中文](https://proffitteoy.github.io/Topp/guide/wasserstein.html)
 
-Topp implements exactly two Wasserstein conventions in version 0.1.0.
+Topp currently implements exactly two Wasserstein conventions.
 
 ## $W_{1,\infty}$
 
@@ -52,7 +52,7 @@ Other combinations are rejected rather than silently reinterpreted:
 >>> topp.wasserstein_distance(x, y, order=3, internal_p=2)
 Traceback (most recent call last):
 ...
-NotImplementedError: topp 0.1.0 supports only (order=1, internal_p=inf) and (order=2, internal_p=2)
+NotImplementedError: topp supports only (order=1, internal_p=inf) and (order=2, internal_p=2)
 ```
 
 See [Mathematical conventions](../MATHEMATICS.md#wasserstein-distance) for the definition of `order` and `internal_p`.

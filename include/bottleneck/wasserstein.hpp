@@ -7,9 +7,9 @@
 
 namespace bottleneck {
 
-// The first optimized kernels intentionally cover the two exact metrics from
-// Phase 2 of docs/research/proposals/wasserstein优化方案.md. More metrics can be added without
-// changing the distance entry points.
+// The stable Python API intentionally covers the two exact metrics documented
+// in docs/MATHEMATICS.md. More metrics can be added without changing the
+// distance entry points.
 enum class WassersteinMetric {
   w1_linf,
   w2_l2,

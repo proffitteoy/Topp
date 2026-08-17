@@ -4,7 +4,7 @@
 
 ## 范围
 
-本轮按 `../proposals/wasserstein第二阶段.md` 的方法重做 Wasserstein 优化：每个 candidate、graph representation、matcher 和 component 分支独立配置、独立差分、随机顺序 benchmark，再组合默认 adaptive kernel。
+本轮按“独立配置、逐项差分、随机顺序 benchmark、淘汰负优化、组合赢家”的方法重做 Wasserstein 优化，再冻结默认 adaptive kernel。
 
 优化实验本身只处理 C++ exact 内核，不处理 Python 外壳、绑定或 approximate auction。主线冻结后额外用当前源码构建 MSVC wheel，并按仓库既有 Python 跨库流程复跑公开速度表。已覆盖 `W1-L∞` 和 `W2-L2`。
 
@@ -545,7 +545,7 @@ parallel sparse 相对串行 sparse 在多个中型分量上可快约 1.9–3.5�
 | uniform 512 | persistent KD active-set, `k=32` | W1 | 932.249 ms | 897.598 ms | 0.963× |
 | uniform 512 | persistent KD active-set, `k=32` | W2 | 1659.529 ms | 1546.389 ms | 0.932× |
 
-LTO 对大 active-set solver 有 3.7%–6.8% 收益，说明跨翻译单元优化在长 solver path 上确实可测；但 small dense 的收益只有 1.7%–3.0%，near-diagonal adaptive 则退化，且 W2 退化达 16.7%。结论：LTO 工程实验完成；保留已有显式构建开关供特定部署选择，不把它设为发布默认，也不把局部 active-set 收益外推到完整 adaptive kernel。
+LTO 对大 active-set solver 有 3.7%–6.8% 收益，说明跨翻译单元优化在长 solver path 上确实可测；但 small dense 的收益只有 1.7%–3.0%，near-diagonal adaptive 则退化，且 W2 退化达 16.7%。结论：LTO 工程实验完成且不进入发布默认；1.0 收口时删除了专用构建入口，结果和实现仍可从 Git 历史追溯。
 
 ## Sparse SAP contiguous arena 工程实验
 
@@ -574,7 +574,7 @@ GCC/MinGW 对同一源码给出反证：uniform 128 的 arena/clean median 为 W
 
 ## MSVC PGO 工程实验
 
-新增 `scripts/build-wasserstein-pgo.cmd`，把 `/O2 /GL + /GENPROFILE` 和 `/O2 /GL + /USEPROFILE` 分成显式 instrument/optimize 两阶段。instrument 构建会把对应版本的 `pgort140.dll` 复制到临时 build 目录，避免离开 Developer Prompt 后 instrumented EXE 在 Windows loader 阶段找不到 runtime。第三个可选参数允许 test executable 复用 benchmark PGD，从而对真实 benchmark profile 做完整 exact 回归。
+实验脚本把 `/O2 /GL + /GENPROFILE` 和 `/O2 /GL + /USEPROFILE` 分成 instrument/optimize 两阶段，并允许 test executable 复用 benchmark PGD，从而对真实 benchmark profile 做完整 exact 回归。该专用脚本在 1.0 收口时随负优化实验入口删除，结果和实现仍可从 Git 历史追溯。
 
 训练集使用冻结的 `adaptive`，覆盖 `64/128/256/512`、两种 metric 与 benchmark 内所有 synthetic pattern，每个场景 1 repetition × 1 round；额外包含一个 8 点 separated 启动探针。两份 `.pgc` 共约 442 KiB，计数 overflow 为 0。`/USEPROFILE` 链接日志确认 3592/3592 个函数使用 profile 数据，6 个热点函数按 speed 编译，其余按 size；用同一 benchmark PGD 链接的 tests 有 3116/3592 个函数命中 profile，73 配置完整回归通过。
 
@@ -591,7 +591,7 @@ GCC/MinGW 对同一源码给出反证：uniform 128 的 arena/clean median 为 W
 | multi-component 512 | W1 | 1.216 ms | 1.227 ms | 1.009× | 1.809 ms | 1.619 ms | 0.895× |
 | multi-component 512 | W2 | 1.261 ms | 1.293 ms | 1.025× | 1.486 ms | 1.728 ms | 1.162× |
 
-PGO 对训练中占 CPU 较多的 uniform dense matcher 有 6.9%–12.6% median 收益，512 uniform 的 p95 也稳定下降约 12%；但 near-diagonal 的 median 不升反降，p95 退化 23%–32%，component W2 的 p95 也退化 16%。即使训练集已经覆盖这些 pattern，链接器的 hot/cold 布局仍明显偏向累计指令占比更高的 dense 路径。结论：PGO 项完成，保留可复现的显式脚本，不进入发布默认，也不把某一固定训练 corpus 当作通用 wheel 构建配置。
+PGO 对训练中占 CPU 较多的 uniform dense matcher 有 6.9%–12.6% median 收益，512 uniform 的 p95 也稳定下降约 12%；但 near-diagonal 的 median 不升反降，p95 退化 23%–32%，component W2 的 p95 也退化 16%。即使训练集已经覆盖这些 pattern，链接器的 hot/cold 布局仍明显偏向累计指令占比更高的 dense 路径。结论：PGO 项完成但不进入发布默认，也不把某一固定训练 corpus 当作通用 wheel 构建配置。
 
 ## 8–8192 scalable synthetic slice
 
@@ -613,7 +613,7 @@ PGO 对训练中占 CPU 较多的 uniform dense matcher 有 6.9%–12.6% median 
 
 ## 主线冻结与公开速度复跑
 
-2026-08-17 将当前 `adaptive` 冻结为主线。candidate parallel、W1 large-dense row reduction、duplicate compression 和 component dispatcher 修正等跨工作负载赢家已经位于默认路径；`sparse_sap_arena`、PGO、persistent KD 和 active-set pricing 系列保留为显式 exact 实验，不进入默认 dispatcher。
+2026-08-17 将当前 `adaptive` 冻结为主线。candidate parallel、W1 large-dense row reduction、duplicate compression 和 component dispatcher 修正等跨工作负载赢家已经位于默认路径；`sparse_sap_arena`、persistent KD 和 active-set pricing 系列只保留为显式 exact 对照，PGO 结果仅保留在本报告中，均不进入默认 dispatcher。
 
 使用当前源码构建的 MSVC wheel（SHA-256 `dffa357a504121538d63e3fea3675054430f67e04f91c35828f29a18d150f641`）重新执行仓库既有跨库 Python 流程：1 个 prepared query 对 64 个 targets，固定种子 `20260812`，覆盖五类输入和 `N=8/32/128/512`；8–128 点每配置 11 轮、512 点 5 轮，库顺序逐轮随机，公开值合并同一规模五类输入的全部计时轮次后取 median。环境为 Windows 11、Python 3.12.13、单线程、GUDHI 3.13.0、giotto-tda 0.6.2。
 

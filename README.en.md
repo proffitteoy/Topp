@@ -15,16 +15,16 @@
 <p align="center">
   <a href="README.md">中文</a> ·
   <a href="https://proffitteoy.github.io/Topp/en/">Website</a> ·
-  <a href="docs/USAGE.en.md">Usage</a> ·
-  <a href="docs/API.en.md">API</a> ·
-  <a href="docs/MATHEMATICS.en.md">Mathematics</a> ·
-  <a href="docs/DEVELOPMENT.en.md">Development</a> ·
+  <a href="docs/en/USAGE.md">Usage</a> ·
+  <a href="docs/en/API.md">API</a> ·
+  <a href="docs/en/MATHEMATICS.md">Mathematics</a> ·
+  <a href="docs/en/DEVELOPMENT.md">Development</a> ·
   <a href="CHANGELOG.md">Changelog</a>
 </p>
 
 Topp is for users who **already have persistence diagrams and need strict, repeated distance comparisons in Python**. It provides a small Python API backed by an adaptive C++20 kernel. Prepare a diagram once and use native batch operations when comparing it with many candidates.
 
-> **v0.1.0 public preview:** PyPI treats `0.1.0` as a final version number, while this project remains in public testing. The Python API is frozen; the Wasserstein kernel will continue to improve.
+> **v1.0.0 stable release:** The documented Python API now follows the `1.x` compatibility contract. The C++ headers and ABI remain kernel-maintenance interfaces and are not covered by that stability promise.
 
 ## When Topp fits
 
@@ -53,7 +53,7 @@ Topp **does not compute persistence diagrams** and does not provide arbitrary `(
 py -m pip install topp
 ```
 
-Prebuilt wheels currently target Windows x64 only. Source builds may work elsewhere with CMake 3.24+ and a C++20 compiler, but Linux and macOS are not yet covered by CI and are not validated platforms for `v0.1.0`.
+Prebuilt wheels currently target Windows x64 only. Source builds may work elsewhere with CMake 3.24+ and a C++20 compiler, but Linux and macOS are not yet covered by CI and are not validated platforms.
 
 ## Quick start
 
@@ -99,11 +99,11 @@ topp.wasserstein_distances(
 
 Inputs must convert to a `float64` array of shape `(n, 2)`. Empty diagrams, diagonal points, duplicates, and canonical essential points are valid. NaN, `birth > death`, `birth=+inf`, `death=-inf`, and other invalid infinity forms raise `ValueError` and are never silently repaired.
 
-See [Mathematical conventions](docs/MATHEMATICS.en.md) for distance definitions, diagonal costs, duplicates, and essential points. See the [API reference](docs/API.en.md) for the call contract.
+See [Mathematical conventions](docs/en/MATHEMATICS.md) for distance definitions, diagonal costs, duplicates, and essential points. See the [API reference](docs/en/API.md) for the call contract.
 
-## Experimental features
+## Kernel maintenance boundary
 
-The C++ source retains experimental candidate, graph, matching, component, and incremental-pricing strategies for maintainers. They are not exposed through the public Python API and are not default performance claims. See [docs/research](docs/research/README.md) for evidence and historical proposals.
+The C++ source retains explicit candidate, graph, matching, component, and incremental-pricing strategies for regression testing, ablation, and maintenance. They are not exposed through the public Python API and are not default performance claims. See the [1.0 kernel final state](docs/research/FINAL_STATE.md) for the default paths, retained benchmarks, and rejected routes.
 
 ## Development
 
@@ -113,19 +113,19 @@ py -m pytest tests/python
 cmd.exe /d /c scripts\build-kernel.cmd
 ```
 
-The existing `include/bottleneck/*` C++ interface supports community maintenance and kernel experiments; it does not promise a stable ABI. See the [development guide](docs/DEVELOPMENT.en.md).
+The existing `include/bottleneck/*` C++ interface supports community maintenance and kernel experiments; it does not promise a stable ABI. See the [development guide](docs/en/DEVELOPMENT.md).
 
 ## Project links
 
 | Entry | Contents |
 |---|---|
 | [Project website](https://proffitteoy.github.io/Topp/) | Use cases, installation, API, and mathematical overview |
-| [Usage guide](docs/USAGE.en.md) | Installation, scalar and batch calls, output arrays, and errors |
-| [API reference](docs/API.en.md) | Complete public API and input contract |
-| [Mathematical conventions](docs/MATHEMATICS.en.md) | Distances, diagonal costs, duplicates, and essential points |
-| [Development guide](docs/DEVELOPMENT.en.md) | Local builds, tests, and benchmarks |
+| [Usage guide](docs/en/USAGE.md) | Installation, scalar and batch calls, output arrays, and errors |
+| [API reference](docs/en/API.md) | Complete public API and input contract |
+| [Mathematical conventions](docs/en/MATHEMATICS.md) | Distances, diagonal costs, duplicates, and essential points |
+| [Development guide](docs/en/DEVELOPMENT.md) | Local builds, tests, and benchmarks |
 | [Contributing](CONTRIBUTING.en.md) | Requirements for correctness and performance changes |
-| [Research notes](docs/research/README.md) | Kernel experiments, differential evidence, and historical proposals |
+| [Research notes](docs/research/README.md) | 1.0 final state, kernel experiments, and differential evidence |
 | [Changelog](CHANGELOG.md) | Released capabilities and known limitations |
 
 ## Citing

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(bottleneck_core VERSION 0.1.0 LANGUAGES CXX)
+project(bottleneck_core VERSION 1.0.0 LANGUAGES CXX)
 
 option(BOTTLENECK_BUILD_TESTS "Build kernel correctness tests" ON)
 option(BOTTLENECK_BUILD_BENCHMARKS "Build kernel microbenchmarks" ON)
@@ -103,11 +103,6 @@ if(BOTTLENECK_BUILD_BENCHMARKS)
     add_executable(bottleneck_router_bench benchmarks/bottleneck_router_bench.cpp)
     target_link_libraries(bottleneck_router_bench PRIVATE bottleneck::core)
     target_compile_features(bottleneck_router_bench PRIVATE cxx_std_20)
-
-    add_executable(bottleneck_wasserstein_assist_bench
-      benchmarks/bottleneck_wasserstein_assist_bench.cpp)
-    target_link_libraries(bottleneck_wasserstein_assist_bench PRIVATE bottleneck::core)
-    target_compile_features(bottleneck_wasserstein_assist_bench PRIVATE cxx_std_20)
 
     add_executable(wasserstein_core_bench benchmarks/wasserstein_core_bench.cpp)
     target_link_libraries(wasserstein_core_bench PRIVATE bottleneck::core)

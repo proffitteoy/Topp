@@ -50,4 +50,4 @@ Experimental strategies must pass reference/oracle differentials before randomiz
 - `include/`, `src/`: exact C++20 kernel;
 - `tests/python/`, `tests/*.cpp`: Python/C++ correctness;
 - `benchmarks/`: reproducible kernel benchmarks;
-- `docs/research/`: evidence, historical proposals, and experimental patches.
+- `docs/research/`: the 1.0 final state, experimental conclusions, and historical patches.

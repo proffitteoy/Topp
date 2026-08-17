@@ -2,7 +2,7 @@
 
 [中文](https://proffitteoy.github.io/Topp/MATHEMATICS.html) · [Repository README](https://github.com/proffitteoy/Topp/blob/main/README.en.md) · [API](API.md)
 
-This page defines the distance semantics of the Topp `v0.1.0` public Python API. **Exact** means that the algorithm introduces no approximation parameter or approximation tolerance; inputs and results still use IEEE 754 `float64`.
+This page defines the distance semantics of the public Topp Python API. **Exact** means that the algorithm introduces no approximation parameter or approximation tolerance; inputs and results still use IEEE 754 `float64`.
 
 ## Persistence diagrams
 
@@ -54,7 +54,7 @@ W_{q,p}(X,Y)
 \right)^{1/q}.
 $$
 
-In the Python API, `order` is $q$ and `internal_p` is $p$. The matching again includes an infinitely repeated diagonal. Version `0.1.0` implements only:
+In the Python API, `order` is $q$ and `internal_p` is $p$. The matching again includes an infinitely repeated diagonal. The current stable API implements only:
 
 - `order=1, internal_p=np.inf`, or $W_{1,\infty}$;
 - `order=2, internal_p=2`, or $W_{2,2}$.

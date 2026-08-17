@@ -2,7 +2,7 @@
 
 [English](https://proffitteoy.github.io/Topp/en/MATHEMATICS.html) · [仓库 README](https://github.com/proffitteoy/Topp/blob/main/README.md) · [API](API.md)
 
-本文定义 Topp `v0.1.0` 公开 Python API 的距离语义。这里的 **exact** 表示算法不引入近似参数或近似容差；输入和返回值仍使用 IEEE 754 `float64`。
+本文定义 Topp 公开 Python API 的距离语义。这里的 **exact** 表示算法不引入近似参数或近似容差；输入和返回值仍使用 IEEE 754 `float64`。
 
 ## Persistence diagram
 
@@ -54,7 +54,7 @@ W_{q,p}(X,Y)
 \right)^{1/q}.
 $$
 
-其中 `order` 对应 $q$，`internal_p` 对应 $p$，匹配同样包含无限重数的对角线。`v0.1.0` 仅实现：
+其中 `order` 对应 $q$，`internal_p` 对应 $p$，匹配同样包含无限重数的对角线。当前稳定 API 仅实现：
 
 - `order=1, internal_p=np.inf`，即 $W_{1,\infty}$；
 - `order=2, internal_p=2`，即 $W_{2,2}$。

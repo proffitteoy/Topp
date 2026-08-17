@@ -10,8 +10,8 @@ sys.path.insert(0, str(ROOT / "python"))
 project = "Topp"
 author = "Topp contributors"
 copyright = "2026, Topp contributors"
-version = "0.1"
-release = "0.1.0"
+version = "1.0"
+release = "1.0.0"
 language = "zh_CN"
 
 extensions = [
@@ -38,7 +38,7 @@ myst_dmath_double_inline = True
 myst_heading_anchors = 3
 
 html_theme = "furo"
-html_title = "Topp 0.1 中文文档"
+html_title = "Topp 1.0 中文文档"
 html_static_path: list[str] = []
 html_theme_options = {
     "source_repository": "https://github.com/proffitteoy/Topp/",

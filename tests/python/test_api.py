@@ -14,7 +14,7 @@ Y = np.array([[0.0, 1.1], [0.3, 0.8]], dtype=np.float64)
 
 
 def test_public_surface_and_version() -> None:
-    assert topp.__version__ == "0.1.0"
+    assert topp.__version__ == "1.0.0"
     assert set(topp.__all__) == {
         "PreparedDiagram",
         "prepare_diagram",

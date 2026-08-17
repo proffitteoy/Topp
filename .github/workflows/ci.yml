@@ -79,3 +79,17 @@ jobs:
           $sdist = Get-ChildItem dist/*.tar.gz | Select-Object -First 1
           python -m pip install "$($sdist.FullName)"
           python examples/basic.py
+
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install documentation dependencies
+        run: python -m pip install -r docs/requirements.txt
+      - name: Build Chinese documentation
+        run: python -m sphinx -E -W --keep-going -b html docs build/docs-zh
+      - name: Build English documentation
+        run: python -m sphinx -E -W --keep-going -b html docs/en build/docs-en

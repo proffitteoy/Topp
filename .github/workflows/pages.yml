@@ -29,9 +29,9 @@ jobs:
       - name: Install documentation dependencies
         run: python -m pip install -r docs/requirements.txt
       - name: Build documentation
-        run: sphinx-build -W --keep-going -b html docs _site
+        run: python -m sphinx -E -W --keep-going -b html docs _site
       - name: Build English documentation
-        run: sphinx-build -W --keep-going -b html docs/en _site/en
+        run: python -m sphinx -E -W --keep-going -b html docs/en _site/en
       - uses: actions/upload-pages-artifact@v3
 
   deploy:

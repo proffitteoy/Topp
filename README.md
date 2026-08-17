@@ -24,7 +24,7 @@
 
 Topp 面向**已经拥有 persistence diagrams，需要在 Python 中做严格、重复距离比较**的用户。它提供小型 Python API 和自适应 C++20 内核；对同一个 diagram 执行多次比较时，可预处理一次并直接调用原生批量接口。
 
-> **v0.1.0 内测版：** PyPI 会把 `0.1.0` 视为正式版本号，但本项目仍处于公开内测阶段；Python API 已冻结，Wasserstein 内核仍会继续优化。
+> **v1.0.0 稳定版：** 本页记录的 Python API 进入 `1.x` 兼容性范围。C++ 头文件与 ABI 仍是内核维护接口，不属于稳定性承诺。
 
 ## 适合什么场景
 
@@ -53,7 +53,7 @@ Topp **不负责生成 persistence diagrams**，也不提供任意 `(order, inte
 py -m pip install topp
 ```
 
-预编译 wheel 目前仅面向 Windows x64。其他平台可尝试使用 CMake 3.24+ 和 C++20 编译器从 sdist 构建，但 Linux 和 macOS 尚未纳入 CI，不属于 `v0.1.0` 的已验证平台。
+预编译 wheel 目前仅面向 Windows x64。其他平台可尝试使用 CMake 3.24+ 和 C++20 编译器从 sdist 构建，但 Linux 和 macOS 尚未纳入 CI，不属于已验证平台。
 
 ## 快速开始
 
@@ -101,9 +101,9 @@ topp.wasserstein_distances(
 
 距离定义、对角线代价、重复点和 essential points 的处理见[数学约定](docs/MATHEMATICS.md)；调用契约见 [API 文档](docs/API.md)。
 
-## 实验功能
+## 内核维护边界
 
-C++ 源码保留候选生成、图表示、matching、component 和 incremental pricing 等实验策略，供维护者复现与比较。它们不会暴露到普通 Python API，也不代表默认性能承诺。研究证据和历史方案见 [docs/research](docs/research/README.md)。
+C++ 源码保留候选生成、图表示、matching、component 和 incremental pricing 等显式策略，用于回归、消融和维护。它们不会暴露到普通 Python API，也不代表默认性能承诺。1.0 默认路径、保留基准和已淘汰路线见[内核最终状态](docs/research/FINAL_STATE.md)。
 
 ## 开发
 
@@ -125,7 +125,7 @@ cmd.exe /d /c scripts\build-kernel.cmd
 | [数学约定](docs/MATHEMATICS.md) | 距离定义、对角线、重复点与 essential points |
 | [开发指南](docs/DEVELOPMENT.md) | 本地构建、测试与 benchmark |
 | [贡献指南](CONTRIBUTING.md) | 正确性和性能修改的提交要求 |
-| [研究记录](docs/research/README.md) | 内核实验、差分证据与历史方案 |
+| [研究记录](docs/research/README.md) | 1.0 最终状态、内核实验和差分证据 |
 | [更新日志](CHANGELOG.md) | 版本能力与已知限制 |
 
 ## 引用

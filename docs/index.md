@@ -99,4 +99,4 @@ print(topp.wasserstein_distance(x, y, order=2, internal_p=2))
 | Wasserstein | 128 | **11.987** | 112.666 | 537.364 | **9.40×** | **44.83×** |
 | Wasserstein | 512 | **16.400** | 3,112.252 | 4,159.430 | **189.77×** | **253.62×** |
 
-测试于 2026-08-17，环境为 Windows 11、Python 3.12.13、单线程，Topp 0.1.0 当前工作区 MSVC wheel（SHA-256 `562161cdc20dda8ab751f611102dda71e5d9d5585c1feed30e0110db1934939c`）、GUDHI 3.13.0，以及该版本提供的 Hera API。Bottleneck 表比较各库默认调用：Topp 为 exact，GUDHI `e=None` 使用近似策略，Hera 使用 approximate `delta=0.01`。Wasserstein 中 Topp/GUDHI 为 exact $W_{1,\infty}$，Hera 为 approximate $W_{1,\infty}$（`delta=0.01`）；因此 Hera 列表示默认 Python API 速度，不是同精度算法排名。不同分布的耗时差异可能很大，汇总值不表示每类输入都达到相同倍数。
+测试于 2026-08-17，环境为 Windows 11、Python 3.12.13、单线程，使用从 1.0 内核基线提交 `4cf5b4e` 构建的 MSVC wheel（SHA-256 `562161cdc20dda8ab751f611102dda71e5d9d5585c1feed30e0110db1934939c`）、GUDHI 3.13.0，以及该版本提供的 Hera API。Bottleneck 表比较各库默认调用：Topp 为 exact，GUDHI `e=None` 使用近似策略，Hera 使用 approximate `delta=0.01`。Wasserstein 中 Topp/GUDHI 为 exact $W_{1,\infty}$，Hera 为 approximate $W_{1,\infty}$（`delta=0.01`）；因此 Hera 列表示默认 Python API 速度，不是同精度算法排名。不同分布的耗时差异可能很大，汇总值不表示每类输入都达到相同倍数。

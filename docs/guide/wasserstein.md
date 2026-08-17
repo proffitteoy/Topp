@@ -2,7 +2,7 @@
 
 [English](https://proffitteoy.github.io/Topp/en/guide/wasserstein.html)
 
-Topp 0.1.0 只实现两种 Wasserstein 约定。
+Topp 当前只实现两种 Wasserstein 约定。
 
 ## $W_{1,\infty}$
 
@@ -50,7 +50,7 @@ $$
 >>> topp.wasserstein_distance(x, y, order=3, internal_p=2)
 Traceback (most recent call last):
 ...
-NotImplementedError: topp 0.1.0 supports only (order=1, internal_p=inf) and (order=2, internal_p=2)
+NotImplementedError: topp supports only (order=1, internal_p=inf) and (order=2, internal_p=2)
 ```
 
 `order` 和 `internal_p` 的定义见[数学约定](../MATHEMATICS.md#wasserstein-distance)。

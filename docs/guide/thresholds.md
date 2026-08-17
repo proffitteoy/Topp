@@ -36,4 +36,4 @@ Traceback (most recent call last):
 ValueError: threshold must be non-negative and not NaN
 ```
 
-0.1.0 版本没有 `wasserstein_within` API。
+当前没有 `wasserstein_within` API。

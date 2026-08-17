@@ -1,6 +1,6 @@
 # 基准测试约定
 
-本目录同时包含单一均匀规模 microbenchmark、分布/非对称 Bottleneck 网格 benchmark，以及 Wasserstein Phase 1/2 内核 benchmark。当前阶段只测 C++ exact 内核。
+本目录保留覆盖 1.0 默认路由、批量接口和关键负对照的 C++ exact 内核 benchmark。一次性实验程序与原始结果不属于发布树。
 
 ## 三层证据
 
@@ -33,23 +33,9 @@ build\manual\bottleneck_component_bench.exe --repetitions 3 --rounds 7
 build\manual\bottleneck_geometry_bench.exe --repetitions 3 --rounds 7
 build\manual\bottleneck_search_bench.exe --repetitions 3 --rounds 7
 build\manual\bottleneck_router_bench.exe --repetitions 3 --rounds 7 --max-points 512
-build\manual\bottleneck_wasserstein_assist_bench.exe --repetitions 1 --rounds 7 --max-points 128
 build\manual\wasserstein_core_bench.exe --repetitions 5 --rounds 7 --max-size 128
 build\manual\wasserstein_batch_bench.exe --repetitions 5 --rounds 21
 ```
-
-MSVC PGO 只作为显式内核实验，使用独立目录完成 instrument、训练和 optimize；instrument 构建会同时复制所需的 `pgort140.dll`：
-
-```powershell
-$env:BOTTLENECK_BUILD_DIR = 'build\pgo-msvc'
-.\scripts\build-wasserstein-pgo.cmd instrument bench
-.\build\pgo-msvc\wasserstein_core_bench.exe --min-size 64 --max-size 512 --repetitions 1 --rounds 1 --experiments adaptive
-.\scripts\build-wasserstein-pgo.cmd optimize bench
-.\scripts\build-wasserstein-pgo.cmd optimize tests wasserstein_core_bench
-.\build\pgo-msvc\wasserstein_core_tests.exe
-```
-
-最后两条让完整 tests 复用 benchmark 训练得到的 PGD；它验证 profile-guided binary 的 exact 语义，但不表示该训练 corpus 对所有输入都有性能收益。
 
 `bottleneck_grid_bench` 覆盖 uniform、near-diagonal、clustered、repeated、separated，以及对称/非对称 `8–256` 点输入，并输出 exact cross-edge density。多轮模式会打乱配置执行顺序并报告 median/p95；单轮输出只用于探索，不作为稳定回归阈值。
 
@@ -68,8 +54,6 @@ $env:BOTTLENECK_BUILD_DIR = 'build\pgo-msvc'
 `bottleneck_batch_bench` 扫描 `B=1,4,16,64,256,1024`，把 query/targets preparation、逐对 raw、只复用 prepared query、逐对全 prepared、batch 自分配输出和 batch 调用方复用输出缓冲区拆开统计。各调用变体逐轮随机顺序并报告 median/p95；可用 `--min-points`、`--max-points`、`--min-batch` 与 `--max-batch` 缩小扫描。
 
 `bottleneck_router_bench` 是 E12 统一消融：在六类分布、对称与 1:8 cardinality ratio 上比较 adaptive、refinement、quickselect、geometric candidates、multiplicity 和 mandatory sparse，输出实际路由、cheap features、median/p95 与相对本轮最佳配置的 regret。配置逐轮随机执行；可用 `--pattern` 和 `--max-points` 缩小矩阵。
-
-`bottleneck_wasserstein_assist_bench` 是 E1–E5 的隔离研究入口：用统一 `L_inf` ground metric 的 dense long-double reference 求 `q=1,2,4,8,16` 最优 matching，记录 `Lq/Uq`、候选削减、matching survival、相邻 q overlap、greedy/5%/10% upper bounds 和 prepass 时间；q=1 另与生产 optimized W1 数值及时间交叉验证。它不修改默认 Bottleneck router。
 
 `wasserstein_core_bench` 覆盖 uniform、near-diagonal、clustered、separated、duplicate-heavy、imbalanced、adversarial-dense、adversarial-sparse 和 32×32 多分量专用输入的 `8–8192` 规模清单。配置按轮随机执行并报告 median/p95，同时拆分 prepare/candidate/graph/component/solver/pricing 时间，并记录 pricing rounds、priced/violated/materialized edges、各 oracle round 数、KD build/update 数、sparse arena build/scratch reuse/heap growth、dynamic inserted edges/Dijkstra runs/batch groups、max degree、peak arena bytes 与 peak graph bytes。可用 `--min-size`、`--max-size`、`--pattern`、`--metric`、`--repetitions` 和 `--rounds` 缩小实验矩阵；`--experiments sweep_csr_sparse,arena_sparse` 可随机轮序配对 clean sparse SAP 与 contiguous residual arena，`--experiments priced_dynamic_topk8,priced_dynamic_batched_topk8` 可配对逐边与按目标 column 批量化的 reduced-cost Dijkstra，`--experiments priced_topk8,priced_simd_topk8,priced_sweep_topk8,priced_kdtree_topk8,priced_kdtree_persistent_topk8,priced_adaptive_topk8,priced_incremental_topk8,priced_persistent_topk8,adaptive` 可配对 scalar full-scan、exact-guarded AVX2 full-scan、sweep、KD-tree、persistent KD geometry/scratch、E4 oracle router、matching-incremental、persistent-residual cycle-cancel 与默认配置，五档 top-k 名称均为 `2/4/8/16/32`。component 并行对照名为 `parallel_component_dense` / `parallel_component_sparse`；旧的单值 `--experiment` 仍兼容。超过 512 的普通分布只有在显式选择 priced 实验时才会开放，`multi_component` 只开放 component 专用配置，其他 dense baseline 继续跳过。
 

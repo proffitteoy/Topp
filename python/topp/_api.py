@@ -57,7 +57,7 @@ def _metric(order: float, internal_p: float) -> int:
     if float(order) == 2.0 and float(internal_p) == 2.0:
         return 1
     raise NotImplementedError(
-        "topp 0.1.0 supports only (order=1, internal_p=inf) and "
+        "topp supports only (order=1, internal_p=inf) and "
         "(order=2, internal_p=2)"
     )
 

@@ -1,6 +1,6 @@
 # Contributing to Topp
 
-[中文](CONTRIBUTING.md) · [Development guide](docs/DEVELOPMENT.en.md)
+[中文](CONTRIBUTING.md) · [Development guide](docs/en/DEVELOPMENT.md)
 
 Correctness, performance, portability, testing, examples, and documentation contributions are welcome.
 

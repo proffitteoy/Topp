@@ -14,7 +14,7 @@
 
 ## 实验实现与 exact 边界
 
-新增 `benchmarks/bottleneck_wasserstein_assist_bench.cpp`：
+本轮曾使用独立的 `bottleneck_wasserstein_assist_bench`：
 
 - ground metric 对所有 q 统一为 `L∞`；
 - 用 long-double dense Hungarian reference 求 `q=1,2,4,8,16` 的最优 positive-saving matching；
@@ -142,12 +142,6 @@ optimal W matching 在 dB 下的 surviving fraction：
 - 保留 exact-safe `lower_bound_hint` 作为显式实验/外部 certified-bound 入口，但默认 0，错误 hint 会被前一 ULP feasibility 安全拒绝；
 - 继续使用 E6–E12 中无需先计算 Wasserstein 的结构迁移赢家。
 
-## 验证与复现
+## 归档状态
 
-```powershell
-build\bn-phase2-e7-dev\bottleneck_wasserstein_assist_bench.exe --pattern near_diagonal --max-points 128 --repetitions 1 --rounds 7
-build\bn-phase2-e7-dev\bottleneck_wasserstein_assist_bench.exe --pattern duplicate_heavy --max-points 128 --repetitions 1 --rounds 7
-build\bn-phase2-e7-dev\bottleneck_wasserstein_assist_bench.exe --pattern uniform --max-points 128 --repetitions 1 --rounds 7
-```
-
-最终发布级验证仍需覆盖 C++ 全配置、GUDHI exact differential、Wasserstein 回归、MSVC/CMake 两套构建和 diff hygiene。
+该隔离程序只用于判定 E1–E5 是否进入默认路由；结论为不进入。1.0 收口时已从活动 benchmark 集删除，源码与完整命令可从提交 `4cf5b4e` 追溯。本报告保留输入口径、数值和 router 决策，不把一次性 harness 继续作为发布维护面。

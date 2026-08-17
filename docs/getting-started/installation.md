@@ -15,7 +15,7 @@ py -m pip install topp
 ```pycon
 >>> import topp
 >>> topp.__version__
-'0.1.0'
+'1.0.0'
 ```
 
 NumPy 1.23 或更高版本会自动安装，也是 Topp 唯一的运行时依赖。
@@ -40,7 +40,7 @@ cd Topp
 py -m pip install -v .
 ```
 
-Linux 和 macOS 尚未纳入 0.1.0 版本的 CI。在这些平台成功完成本地编译，并不代表它们属于当前公开支持范围。
+Linux 和 macOS 尚未纳入发布 CI。在这些平台成功完成本地编译，并不代表它们属于当前公开支持范围。
 
 ## 冒烟测试
 
