@@ -27,7 +27,7 @@ distance = topp.bottleneck_distance(x, y)
 assert topp.bottleneck_within(x, y, distance)
 ```
 
-`+inf` 是合法阈值；负数和 NaN 会被拒绝：
+阈值必须是非布尔的实数标量。`+inf` 合法；字符串、数组标量、负数和 NaN 会被拒绝：
 
 ```pycon
 >>> topp.bottleneck_within(x, y, -1)

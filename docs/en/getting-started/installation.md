@@ -2,9 +2,9 @@
 
 [中文](https://proffitteoy.github.io/Topp/getting-started/installation.html)
 
-## Windows wheel
+## Windows and Linux wheels
 
-Topp publishes wheels for Windows x64 and CPython 3.10–3.14:
+Topp publishes wheels for Windows x64, Linux x86_64, and CPython 3.10–3.14:
 
 ```console
 py -m pip install topp
@@ -15,7 +15,7 @@ Confirm the installed version:
 ```pycon
 >>> import topp
 >>> topp.__version__
-'1.0.0'
+'1.0.1'
 ```
 
 NumPy 1.23 or newer is installed automatically and is Topp's only runtime dependency.
@@ -40,7 +40,7 @@ cd Topp
 py -m pip install -v .
 ```
 
-Linux and macOS are not covered by release CI. A successful local compilation on either platform is not currently a published support guarantee.
+Linux is covered by release CI; macOS is not. A successful local macOS compilation is not currently a published support guarantee.
 
 ## Smoke test
 

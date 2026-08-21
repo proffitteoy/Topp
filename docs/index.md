@@ -67,7 +67,7 @@ Topp 只比较 persistence diagrams，不构造 filtration，也不计算 persis
 py -m pip install topp
 ```
 
-预编译 wheel 目前支持 Windows x64 和 CPython 3.10–3.14。在其他平台尝试源码构建前，请阅读[平台与支持](platforms.md)。
+预编译 wheel 支持 Windows x64、Linux x86_64 和 CPython 3.10–3.14。在 macOS 尝试源码构建前，请阅读[平台与支持](platforms.md)。
 
 ## 第一次计算
 

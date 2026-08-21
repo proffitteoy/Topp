@@ -6,7 +6,7 @@ All public objects are imported from `topp`. `topp._core` is private and has no 
 
 ## Input type
 
-`DiagramLike = ArrayLike | PreparedDiagram`. Array-like inputs must convert to a `float64` array of shape `(n, 2)`. See [Inputs, duplicates, and essential points](guide/input-semantics.md) for strict validation rules.
+`DiagramLike` is a runtime and typing alias exported from `topp`; it represents a strict real-valued array-like input or a `PreparedDiagram`. Array-like inputs must convert to a `float64` array of shape `(n, 2)`. See [Inputs, duplicates, and essential points](guide/input-semantics.md) for strict validation rules.
 
 ## `PreparedDiagram`
 
@@ -18,7 +18,7 @@ An immutable preprocessed object returned by `prepare_diagram`.
 
 ## `prepare_diagram(diagram) -> PreparedDiagram`
 
-Validates and copies the input, then creates caches used by batch operations. Later input mutations cannot affect the prepared object.
+Validates and copies the input, then creates caches used by batch operations. Later input mutations cannot affect the prepared object. Passing an existing `PreparedDiagram` returns it unchanged.
 
 ## `bottleneck_distance(diagram_a, diagram_b) -> float`
 
@@ -35,7 +35,7 @@ Other combinations raise `NotImplementedError`.
 
 ## `bottleneck_distances(query, diagrams, *, out=None) -> np.ndarray`
 
-Computes one-to-many exact Bottleneck distances in one native call. Returns a `float64` array of shape `(m,)`. A valid `out` is filled and returned unchanged.
+Computes one-to-many exact Bottleneck distances in one native call. Returns a `float64` array of shape `(m,)`. A valid `out` is filled and returned unchanged; it must be writable, aligned, C-contiguous, `float64`, and correctly sized.
 
 ## `wasserstein_distances(query, diagrams, *, order=1, internal_p=np.inf, out=None) -> np.ndarray`
 
@@ -47,9 +47,9 @@ Exact decision API. Returns `True` exactly when the Bottleneck distance is `<= t
 
 ## Exceptions
 
-- `TypeError`: non-convertible inputs, an invalid `out` type, or a non-numeric threshold;
-- `ValueError`: invalid shape, point semantics, threshold, or `out` layout;
-- `NotImplementedError`: unsupported Wasserstein parameters;
+- `TypeError`: non-real diagrams, invalid scalar types, non-iterable targets, or an invalid `out` type;
+- `ValueError`: invalid shape, `float64` representability, point semantics, scalar value, or `out` layout;
+- `NotImplementedError`: valid but unsupported Wasserstein parameter combinations;
 - `MemoryError`: native allocation failure.
 
 ## Threads and the GIL

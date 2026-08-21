@@ -61,7 +61,7 @@ arena、persistent KD、active-set pricing 和相关 matcher 仍可作为显式 
 
 ## 1.0 已知边界
 
-- 发布 wheel 只覆盖 Windows x64、CPython 3.10–3.14；Linux/macOS 不属于发布 CI 平台。
+- 1.0.1 起发布 wheel 覆盖 Windows x64 与 Linux x86_64、CPython 3.10–3.14；macOS 不属于发布 CI 平台。Linux wheel 使用可移植标量内核。
 - Wasserstein 不支持任意 `(order, internal_p)`。
 - 公共速度表是固定机器、合成输入和调用方式下的汇总；不能外推为所有分布都同倍数领先。
 - 512 点 uniform/clustered 等 dense Wasserstein 输入仍可能慢于外部实现；这不影响 exact 正确性，但属于后续性能空间。

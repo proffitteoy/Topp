@@ -1,6 +1,7 @@
 """Exact persistence-diagram distances."""
 
 from ._api import (
+    DiagramLike,
     PreparedDiagram,
     bottleneck_distance,
     bottleneck_distances,
@@ -10,9 +11,10 @@ from ._api import (
     wasserstein_distances,
 )
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 
 __all__ = [
+    "DiagramLike",
     "PreparedDiagram",
     "bottleneck_distance",
     "bottleneck_distances",

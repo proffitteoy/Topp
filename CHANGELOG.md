@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.0.1 - 2026-08-21
+
+Python API validation and error-contract patch release.
+
+### Changed
+
+- Diagram inputs now require real numeric values. Complex arrays, masked arrays,
+  booleans, numeric strings, and other non-real values are rejected instead of
+  being silently coerced.
+- `DiagramLike` is now a documented top-level runtime and typing export, and
+  `prepare_diagram` explicitly accepts an existing `PreparedDiagram`.
+- Linux x86_64 joins Windows x64 as a wheel, C++/Python CI, sdist, and
+  TestPyPI-verified release platform for CPython 3.10–3.14.
+
+### Fixed
+
+- Finite values that cannot be represented as `float64` now raise `ValueError`
+  instead of overflowing to essential points or leaking `OverflowError`.
+- Batch validation checks metric, query, and output layout before consuming
+  targets, and target failures report their `diagrams[index]` location without
+  hiding the original exception category.
+- Caller-provided output arrays must be aligned in both the Python wrapper and
+  native binding.
+
 ## 1.0.0 - 2026-08-17
 
 Stable Python API release with the optimized exact kernels frozen as the default implementation.

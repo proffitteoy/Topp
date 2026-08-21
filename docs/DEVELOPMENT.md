@@ -6,12 +6,22 @@
 
 ## Python 构建与测试
 
-需要 Python 3.10+、CMake 3.24+、C++20 编译器。Windows 推荐 Visual Studio 2022 Build Tools。
+需要 Python 3.10+、CMake 3.24+、C++20 编译器。Windows 推荐 Visual Studio 2022 Build Tools；Linux 使用 GCC/Clang 与 Ninja。
 
 ```powershell
 py -m pip install -v .
 py -m pip install pytest
 py -m pytest tests/python
+```
+
+Linux：
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -v ".[test]"
+.venv/bin/python -m pytest tests/python -m "not oracle"
+.venv/bin/python -m mypy --strict tests/python/typecheck_api.py
+.venv/bin/python -m mypy.stubtest topp
 ```
 
 Oracle 套件需要固定的 GUDHI 3.13.0：
@@ -27,6 +37,14 @@ py -m pytest tests/python/test_oracles.py
 cmd.exe /d /c scripts\build-kernel.cmd
 build\manual\bottleneck_core_tests.exe
 build\manual\wasserstein_core_tests.exe
+```
+
+Linux：
+
+```bash
+cmake -S . -B build/linux -G Ninja -DCMAKE_BUILD_TYPE=Release -DBOTTLENECK_BUILD_BENCHMARKS=OFF
+cmake --build build/linux
+ctest --test-dir build/linux --output-on-failure
 ```
 
 关闭 AVX2 translation units 以验证 scalar 构建：

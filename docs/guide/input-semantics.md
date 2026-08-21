@@ -4,7 +4,7 @@
 
 ## 接受的 array-like 输入
 
-每个 diagram 都必须可以转换为形状为 `(n, 2)` 的 `float64` 数组：
+每个 diagram 都必须由实数值组成，并可以转换为形状为 `(n, 2)` 的 `float64` 数组：
 
 ```python
 import numpy as np
@@ -13,7 +13,7 @@ import topp
 topp.bottleneck_distance([[0, 1], [1, 3]], np.array([[0.0, 2.0]]))
 ```
 
-列表、元组、NumPy 数组、整数数组和非连续视图均可使用。Topp 会验证输入，并复制到按 C 顺序连续的 `float64` 存储中。
+列表、元组、NumPy 数组、整数数组和非连续视图均可使用。元素可以是 Python/NumPy 实数、`Decimal` 或 `Fraction`。Topp 会验证输入，并复制到按 C 顺序连续的 `float64` 存储中；超出 `float64` 范围的有限值不会被转换成无穷。
 
 ## 空 diagrams
 
@@ -61,7 +61,7 @@ assert topp.wasserstein_distance(a, b) == 3.0
 
 ## 非法输入
 
-NaN、`birth > death`、`birth=+inf`、`death=-inf` 和其他非法无穷形式会触发 `ValueError`。Topp 不会交换坐标，也不会静默删除非法行。
+复数、MaskedArray、布尔值、数字字符串和其他非实数输入会触发 `TypeError`。无法表示为 `float64` 的有限值、NaN、`birth > death`、`birth=+inf`、`death=-inf` 和其他非法无穷形式会触发 `ValueError`。Topp 不会丢弃虚部或 mask、交换坐标，也不会静默删除非法行。
 
 ```pycon
 >>> topp.prepare_diagram([[2.0, 1.0]])

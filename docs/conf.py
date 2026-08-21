@@ -11,7 +11,7 @@ project = "Topp"
 author = "Topp contributors"
 copyright = "2026, Topp contributors"
 version = "1.0"
-release = "1.0.0"
+release = "1.0.1"
 language = "zh_CN"
 
 extensions = [

@@ -8,13 +8,13 @@
 py -m pip install topp
 ```
 
-预编译 wheel 支持 Windows x64 与 CPython 3.10–3.14。从源码安装需要 CMake 3.24+ 和 C++20 编译器：
+预编译 wheel 支持 Windows x64、Linux x86_64 与 CPython 3.10–3.14。从源码安装需要 CMake 3.24+ 和 C++20 编译器：
 
 ```powershell
 py -m pip install -v .
 ```
 
-Linux 和 macOS 尚未纳入 CI；从 sdist 构建在这些平台上属于未验证路径。
+Linux wheel、sdist 安装和 Python/C++ 测试已纳入 CI。macOS 尚未纳入 CI，从 sdist 构建仍属于未验证路径。
 
 ## 单对距离
 
@@ -49,7 +49,7 @@ out = np.empty(len(targets), dtype=np.float64)
 assert topp.bottleneck_distances(query, targets, out=out) is out
 ```
 
-`out` 必须是可写、C-contiguous、`float64`、shape `(len(targets),)`。
+`out` 必须是可写、内存对齐、C-contiguous、`float64`、shape `(len(targets),)`。
 
 ## Threshold decision
 
@@ -60,15 +60,16 @@ if topp.bottleneck_within(x, y, 0.1):
     print("close")
 ```
 
-阈值必须非负且不能为 NaN；`+inf` 合法。
+阈值必须是非布尔的实数标量、非负且不能为 NaN；`+inf` 合法。字符串和数组标量不会被隐式转换。
 
 ## 输入格式
 
 - shape 必须为 `(n, 2)`，每行是 `[birth, death]`；
-- list、tuple、NumPy 数组和非连续 view 均可；
+- list、tuple、NumPy 数组和非连续 view 均可，元素可以是 Python/NumPy 实数、`Decimal` 或 `Fraction`；
 - 内部统一为 C-contiguous `float64`；
 - 空图可用 `[]` 或 `np.empty((0, 2))`；
 - 支持 `(finite, +inf)`、`(-inf, finite)`、`(-inf, +inf)`；
+- 复数、MaskedArray、布尔值、数字字符串和超出 `float64` 范围的有限值会被拒绝；
 - 非法输入抛异常，不会被交换、删除或静默修正。
 
 可直接运行 [examples/basic.py](../examples/basic.py) 检查安装。

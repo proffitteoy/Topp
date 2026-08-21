@@ -2,8 +2,8 @@ cff-version: 1.2.0
 message: "If you use Topp in research, please cite this software release."
 title: "Topp: exact persistence-diagram distances"
 type: software
-version: 1.0.0
-date-released: 2026-08-17
+version: 1.0.1
+date-released: 2026-08-21
 authors:
   - name: "Topp contributors"
 repository-code: "https://github.com/proffitteoy/Topp"

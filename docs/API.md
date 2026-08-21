@@ -6,7 +6,7 @@
 
 ## 输入类型
 
-`DiagramLike = ArrayLike | PreparedDiagram`。array-like 必须能转换为 shape `(n, 2)` 的 `float64` 数组。严格输入规则见[使用说明](USAGE.md)。
+`DiagramLike` 是可从 `topp` 顶层导入的运行时与类型别名，表示严格实数 array-like 或 `PreparedDiagram`。array-like 必须能转换为 shape `(n, 2)` 的 `float64` 数组。严格输入规则见[使用说明](USAGE.md)。
 
 ## `PreparedDiagram`
 
@@ -18,7 +18,7 @@
 
 ## `prepare_diagram(diagram) -> PreparedDiagram`
 
-校验并复制输入，构建批量复用所需缓存。输入之后的修改不会改变 prepared 对象。
+校验并复制输入，构建批量复用所需缓存。输入之后的修改不会改变 prepared 对象。传入已有 `PreparedDiagram` 时原样返回。
 
 ## `bottleneck_distance(diagram_a, diagram_b) -> float`
 
@@ -35,7 +35,7 @@
 
 ## `bottleneck_distances(query, diagrams, *, out=None) -> np.ndarray`
 
-一次 native 调用计算 one-to-many exact Bottleneck 距离。返回 shape `(m,)`、dtype `float64`。提供合法 `out` 时写入并返回同一数组。
+一次 native 调用计算 one-to-many exact Bottleneck 距离。返回 shape `(m,)`、dtype `float64`。提供合法 `out` 时写入并返回同一数组；`out` 必须可写、对齐、C-contiguous、`float64` 且长度匹配。
 
 ## `wasserstein_distances(query, diagrams, *, order=1, internal_p=np.inf, out=None) -> np.ndarray`
 
@@ -47,9 +47,9 @@ exact decision API：仅当 Bottleneck Distance `<= threshold` 时返回 `True`�
 
 ## 异常
 
-- `TypeError`：不可转换的输入、非法 `out` 类型、非数值 threshold；
-- `ValueError`：shape、点语义、threshold 或 `out` 布局非法；
-- `NotImplementedError`：暂不支持的 Wasserstein 参数；
+- `TypeError`：非实数 diagram、非法标量类型、不可迭代 targets 或非法 `out` 类型；
+- `ValueError`：shape、`float64` 表示范围、点语义、标量取值或 `out` 布局非法；
+- `NotImplementedError`：取值合法但暂不支持的 Wasserstein 参数组合；
 - `MemoryError`：原生分配失败。
 
 ## 线程与 GIL

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.24)
 
-project(bottleneck_core VERSION 1.0.0 LANGUAGES CXX)
+project(bottleneck_core VERSION 1.0.1 LANGUAGES CXX)
 
 option(BOTTLENECK_BUILD_TESTS "Build kernel correctness tests" ON)
 option(BOTTLENECK_BUILD_BENCHMARKS "Build kernel microbenchmarks" ON)

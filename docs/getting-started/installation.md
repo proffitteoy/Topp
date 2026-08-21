@@ -2,9 +2,9 @@
 
 [English](https://proffitteoy.github.io/Topp/en/getting-started/installation.html)
 
-## Windows wheel
+## Windows 与 Linux wheel
 
-Topp 为 Windows x64 和 CPython 3.10–3.14 发布 wheel：
+Topp 为 Windows x64、Linux x86_64 和 CPython 3.10–3.14 发布 wheel：
 
 ```console
 py -m pip install topp
@@ -15,7 +15,7 @@ py -m pip install topp
 ```pycon
 >>> import topp
 >>> topp.__version__
-'1.0.0'
+'1.0.1'
 ```
 
 NumPy 1.23 或更高版本会自动安装，也是 Topp 唯一的运行时依赖。
@@ -40,7 +40,7 @@ cd Topp
 py -m pip install -v .
 ```
 
-Linux 和 macOS 尚未纳入发布 CI。在这些平台成功完成本地编译，并不代表它们属于当前公开支持范围。
+Linux 已纳入发布 CI；macOS 尚未纳入。在 macOS 成功完成本地编译，并不代表它属于当前公开支持范围。
 
 ## 冒烟测试
 

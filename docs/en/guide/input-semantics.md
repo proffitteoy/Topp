@@ -4,7 +4,7 @@
 
 ## Accepted array-like inputs
 
-Every diagram must convert to a `float64` array of shape `(n, 2)`:
+Every diagram must contain real values and convert to a `float64` array of shape `(n, 2)`:
 
 ```python
 import numpy as np
@@ -13,7 +13,7 @@ import topp
 topp.bottleneck_distance([[0, 1], [1, 3]], np.array([[0.0, 2.0]]))
 ```
 
-Lists, tuples, NumPy arrays, integer arrays, and non-contiguous views are accepted. Topp validates and copies them into C-contiguous `float64` storage.
+Lists, tuples, NumPy arrays, integer arrays, and non-contiguous views are accepted. Elements may be Python/NumPy real numbers, `Decimal`, or `Fraction`. Topp validates and copies them into C-contiguous `float64` storage; finite values outside the `float64` range are not converted to infinity.
 
 ## Empty diagrams
 
@@ -61,7 +61,7 @@ If the multiplicity of any essential type differs, the result is `inf`.
 
 ## Invalid inputs
 
-Topp raises `ValueError` for NaN, `birth > death`, `birth=+inf`, `death=-inf`, and other invalid infinity forms. It never swaps coordinates or silently deletes invalid rows.
+Topp raises `TypeError` for complex values, masked arrays, booleans, numeric strings, and other non-real inputs. It raises `ValueError` for finite values that cannot be represented as `float64`, NaN, `birth > death`, `birth=+inf`, `death=-inf`, and other invalid infinity forms. It never drops imaginary parts or masks, swaps coordinates, or silently deletes invalid rows.
 
 ```pycon
 >>> topp.prepare_diagram([[2.0, 1.0]])

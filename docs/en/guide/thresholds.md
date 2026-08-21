@@ -27,7 +27,7 @@ distance = topp.bottleneck_distance(x, y)
 assert topp.bottleneck_within(x, y, distance)
 ```
 
-`+inf` is a valid threshold. Negative values and NaN are rejected:
+The threshold must be a non-boolean real scalar. `+inf` is valid; strings, array scalars, negative values, and NaN are rejected:
 
 ```pycon
 >>> topp.bottleneck_within(x, y, -1)

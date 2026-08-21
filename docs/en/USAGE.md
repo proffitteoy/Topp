@@ -8,13 +8,13 @@
 py -m pip install topp
 ```
 
-Binary wheels support Windows x64 and CPython 3.10–3.14. Installing from source requires CMake 3.24+ and a C++20 compiler:
+Binary wheels support Windows x64, Linux x86_64, and CPython 3.10–3.14. Installing from source requires CMake 3.24+ and a C++20 compiler:
 
 ```powershell
 py -m pip install -v .
 ```
 
-Linux and macOS are not yet covered by CI; sdist builds on those platforms are unvalidated.
+Linux wheel, sdist, Python, and C++ tests run in CI. macOS remains outside CI, so its sdist path is unvalidated.
 
 ## Pairwise distances
 
@@ -49,7 +49,7 @@ out = np.empty(len(targets), dtype=np.float64)
 assert topp.bottleneck_distances(query, targets, out=out) is out
 ```
 
-`out` must be writable, C-contiguous, `float64`, and shaped `(len(targets),)`.
+`out` must be writable, memory-aligned, C-contiguous, `float64`, and shaped `(len(targets),)`.
 
 ## Threshold decisions
 
@@ -58,15 +58,16 @@ if topp.bottleneck_within(x, y, 0.1):
     print("close")
 ```
 
-The threshold must be non-negative and not NaN; `+inf` is valid.
+The threshold must be a non-boolean real scalar, non-negative, and not NaN; `+inf` is valid. Strings and array scalars are not implicitly converted.
 
 ## Input format
 
 - shape `(n, 2)`, with each row `[birth, death]`;
-- lists, tuples, NumPy arrays, and non-contiguous views are accepted;
+- lists, tuples, NumPy arrays, and non-contiguous views are accepted, with Python/NumPy real, `Decimal`, or `Fraction` elements;
 - values are normalized to C-contiguous `float64`;
 - use `[]` or `np.empty((0, 2))` for an empty diagram;
 - `(finite, +inf)`, `(-inf, finite)`, and `(-inf, +inf)` are supported;
+- complex values, masked arrays, booleans, numeric strings, and finite values outside the `float64` range are rejected;
 - invalid inputs raise exceptions and are never swapped, removed, or silently repaired.
 
 Run [examples/basic.py](https://github.com/proffitteoy/Topp/blob/main/examples/basic.py) to smoke-test an installation.

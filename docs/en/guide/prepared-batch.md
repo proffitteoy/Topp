@@ -60,7 +60,7 @@ returned = topp.bottleneck_distances(query, targets, out=out)
 assert returned is out
 ```
 
-`out` must be writable, C-contiguous, `float64`, and have shape `(len(targets),)`:
+`out` must be writable, memory-aligned, C-contiguous, `float64`, and have shape `(len(targets),)`:
 
 ```python
 bad = np.empty(len(targets), dtype=np.float32)

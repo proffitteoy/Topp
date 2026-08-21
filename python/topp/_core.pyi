@@ -1,0 +1,36 @@
+from collections.abc import Sequence
+from typing import NoReturn
+
+import numpy as np
+from numpy.typing import NDArray
+
+
+class PreparedDiagram:
+    def __new__(cls, _private: NoReturn, /) -> PreparedDiagram: ...
+    def __init__(self, _private: NoReturn, /) -> None: ...
+    @property
+    def n_points(self) -> int: ...
+    @property
+    def n_finite_points(self) -> int: ...
+    def __len__(self) -> int: ...
+
+
+def prepare_diagram(values: NDArray[np.float64]) -> PreparedDiagram: ...
+def bottleneck_distance(first: PreparedDiagram, second: PreparedDiagram) -> float: ...
+def wasserstein_distance(
+    first: PreparedDiagram, second: PreparedDiagram, metric: int
+) -> float: ...
+def bottleneck_within(
+    first: PreparedDiagram, second: PreparedDiagram, threshold: float
+) -> bool: ...
+def bottleneck_distances(
+    query: PreparedDiagram,
+    diagrams: Sequence[PreparedDiagram],
+    output: NDArray[np.float64],
+) -> None: ...
+def wasserstein_distances(
+    query: PreparedDiagram,
+    diagrams: Sequence[PreparedDiagram],
+    metric: int,
+    output: NDArray[np.float64],
+) -> None: ...

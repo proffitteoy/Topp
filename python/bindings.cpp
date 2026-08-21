@@ -56,6 +56,9 @@ void require_output(const py::array_t<double, py::array::c_style>& output,
   if (!output.writeable()) {
     throw py::value_error("output array must be writeable");
   }
+  if (!py::cast<bool>(output.attr("flags").attr("aligned"))) {
+    throw py::value_error("output array must be aligned");
+  }
 }
 
 }  // namespace

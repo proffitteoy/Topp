@@ -60,7 +60,7 @@ returned = topp.bottleneck_distances(query, targets, out=out)
 assert returned is out
 ```
 
-`out` 必须可写、按 C 顺序连续、类型为 `float64`，且形状为 `(len(targets),)`：
+`out` 必须可写、内存对齐、按 C 顺序连续、类型为 `float64`，且形状为 `(len(targets),)`：
 
 ```python
 bad = np.empty(len(targets), dtype=np.float32)

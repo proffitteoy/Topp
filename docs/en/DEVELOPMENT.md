@@ -6,12 +6,22 @@ Regular users consume only the Python API. `include/bottleneck/*`, experimental 
 
 ## Python build and tests
 
-Requirements: Python 3.10+, CMake 3.24+, and a C++20 compiler. Visual Studio 2022 Build Tools are recommended on Windows.
+Requirements: Python 3.10+, CMake 3.24+, and a C++20 compiler. Visual Studio 2022 Build Tools are recommended on Windows; Linux uses GCC/Clang and Ninja.
 
 ```powershell
 py -m pip install -v .
 py -m pip install pytest
 py -m pytest tests/python
+```
+
+Linux:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -v ".[test]"
+.venv/bin/python -m pytest tests/python -m "not oracle"
+.venv/bin/python -m mypy --strict tests/python/typecheck_api.py
+.venv/bin/python -m mypy.stubtest topp
 ```
 
 The oracle suite requires pinned GUDHI 3.13.0:
@@ -27,6 +37,14 @@ py -m pytest tests/python/test_oracles.py
 cmd.exe /d /c scripts\build-kernel.cmd
 build\manual\bottleneck_core_tests.exe
 build\manual\wasserstein_core_tests.exe
+```
+
+Linux:
+
+```bash
+cmake -S . -B build/linux -G Ninja -DCMAKE_BUILD_TYPE=Release -DBOTTLENECK_BUILD_BENCHMARKS=OFF
+cmake --build build/linux
+ctest --test-dir build/linux --output-on-failure
 ```
 
 Disable AVX2 translation units to validate the scalar build:

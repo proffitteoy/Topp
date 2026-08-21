@@ -24,7 +24,7 @@
 
 Topp 面向**已经拥有 persistence diagrams，需要在 Python 中做严格、重复距离比较**的用户。它提供小型 Python API 和自适应 C++20 内核；对同一个 diagram 执行多次比较时，可预处理一次并直接调用原生批量接口。
 
-> **v1.0.0 稳定版：** 本页记录的 Python API 进入 `1.x` 兼容性范围。C++ 头文件与 ABI 仍是内核维护接口，不属于稳定性承诺。
+> **v1.0.1 稳定版：** 本页记录的 Python API 进入 `1.x` 兼容性范围。C++ 头文件与 ABI 仍是内核维护接口，不属于稳定性承诺。
 
 ## 适合什么场景
 
@@ -44,7 +44,7 @@ Topp **不负责生成 persistence diagrams**，也不提供任意 `(order, inte
 - 不可变的 `PreparedDiagram` 和原生 one-to-many 计算；
 - 支持复用输出数组，以及 exact `bottleneck_within` 阈值判断；
 - 原生计算期间释放 GIL；
-- Windows x64 的 CPython 3.10–3.14 wheels；
+- Windows x64 与 Linux x86_64 的 CPython 3.10–3.14 wheels；
 - 运行时仅依赖 NumPy；AVX2 在运行时检测，不要求所有机器支持。
 
 ## 安装
@@ -53,7 +53,7 @@ Topp **不负责生成 persistence diagrams**，也不提供任意 `(order, inte
 py -m pip install topp
 ```
 
-预编译 wheel 目前仅面向 Windows x64。其他平台可尝试使用 CMake 3.24+ 和 C++20 编译器从 sdist 构建，但 Linux 和 macOS 尚未纳入 CI，不属于已验证平台。
+预编译 wheel 面向 Windows x64 与 Linux x86_64。macOS 可尝试使用 CMake 3.24+ 和 C++20 编译器从 sdist 构建，但尚未纳入 CI，不属于已验证平台。
 
 ## 快速开始
 
@@ -97,7 +97,7 @@ topp.wasserstein_distances(
 
 ## 输入契约
 
-输入必须可转换为 `(n, 2)` 的 `float64` 数组。空图、对角点、重复点和规范 essential points 合法。NaN、`birth > death`、`birth=+inf`、`death=-inf` 及其他非法无穷组合会抛出 `ValueError`，不会被静默修正。
+输入必须由 Python/NumPy 实数、`Decimal` 或 `Fraction` 组成，并可转换为 `(n, 2)` 的 `float64` 数组。复数、MaskedArray、布尔值、数字字符串和超出 `float64` 范围的有限值会被拒绝。空图、对角点、重复点和规范 essential points 合法；NaN、`birth > death`、`birth=+inf`、`death=-inf` 及其他非法无穷组合会抛出 `ValueError`，不会被静默修正。
 
 距离定义、对角线代价、重复点和 essential points 的处理见[数学约定](docs/MATHEMATICS.md)；调用契约见 [API 文档](docs/API.md)。
 

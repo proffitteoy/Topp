@@ -24,7 +24,7 @@
 
 Topp is for users who **already have persistence diagrams and need strict, repeated distance comparisons in Python**. It provides a small Python API backed by an adaptive C++20 kernel. Prepare a diagram once and use native batch operations when comparing it with many candidates.
 
-> **v1.0.0 stable release:** The documented Python API now follows the `1.x` compatibility contract. The C++ headers and ABI remain kernel-maintenance interfaces and are not covered by that stability promise.
+> **v1.0.1 stable release:** The documented Python API now follows the `1.x` compatibility contract. The C++ headers and ABI remain kernel-maintenance interfaces and are not covered by that stability promise.
 
 ## When Topp fits
 
@@ -44,7 +44,7 @@ Topp **does not compute persistence diagrams** and does not provide arbitrary `(
 - immutable `PreparedDiagram` objects and native one-to-many operations;
 - reusable output arrays and exact `bottleneck_within` threshold decisions;
 - GIL release during native computation;
-- Windows x64 wheels for CPython 3.10–3.14;
+- Windows x64 and Linux x86_64 wheels for CPython 3.10–3.14;
 - NumPy as the only runtime dependency; AVX2 is selected at runtime and is not required.
 
 ## Installation
@@ -53,7 +53,7 @@ Topp **does not compute persistence diagrams** and does not provide arbitrary `(
 py -m pip install topp
 ```
 
-Prebuilt wheels currently target Windows x64 only. Source builds may work elsewhere with CMake 3.24+ and a C++20 compiler, but Linux and macOS are not yet covered by CI and are not validated platforms.
+Prebuilt wheels target Windows x64 and Linux x86_64. macOS source builds may work with CMake 3.24+ and a C++20 compiler, but macOS is not yet covered by CI and is not a validated platform.
 
 ## Quick start
 
@@ -97,7 +97,7 @@ topp.wasserstein_distances(
 
 ## Input contract
 
-Inputs must convert to a `float64` array of shape `(n, 2)`. Empty diagrams, diagonal points, duplicates, and canonical essential points are valid. NaN, `birth > death`, `birth=+inf`, `death=-inf`, and other invalid infinity forms raise `ValueError` and are never silently repaired.
+Inputs must contain Python/NumPy real numbers, `Decimal`, or `Fraction` values and convert to a `float64` array of shape `(n, 2)`. Complex values, masked arrays, booleans, numeric strings, and finite values outside the `float64` range are rejected. Empty diagrams, diagonal points, duplicates, and canonical essential points are valid. NaN, `birth > death`, `birth=+inf`, `death=-inf`, and other invalid infinity forms raise `ValueError` and are never silently repaired.
 
 See [Mathematical conventions](docs/en/MATHEMATICS.md) for distance definitions, diagonal costs, duplicates, and essential points. See the [API reference](docs/en/API.md) for the call contract.
 

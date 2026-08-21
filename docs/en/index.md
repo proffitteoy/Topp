@@ -66,7 +66,7 @@ Topp compares persistence diagrams; it does not construct filtrations or compute
 py -m pip install topp
 ```
 
-Prebuilt wheels currently support Windows x64 and CPython 3.10–3.14. See [Platforms and support](platforms.md) before attempting a source build elsewhere.
+Prebuilt wheels support Windows x64, Linux x86_64, and CPython 3.10–3.14. See [Platforms and support](platforms.md) before attempting a macOS source build.
 
 ## First calculation
 

@@ -1,0 +1,2 @@
+# pybind11 extension classes use a private runtime-only metaclass.
+topp\._core\.PreparedDiagram$

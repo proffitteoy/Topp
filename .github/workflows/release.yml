@@ -32,28 +32,56 @@ jobs:
       - name: Build Windows wheels
         env:
           CIBW_BUILD: cp310-win_amd64 cp311-win_amd64 cp312-win_amd64 cp313-win_amd64 cp314-win_amd64
-          CIBW_TEST_REQUIRES: pytest
+          CIBW_TEST_REQUIRES: pytest mypy>=1.15,<2
           CIBW_TEST_COMMAND: >-
             python -m pytest {project}/tests/python/test_api.py &&
+            python -m mypy --strict {project}/tests/python/typecheck_api.py &&
+            python -m mypy.stubtest topp --allowlist {project}/tests/python/stubtest_allowlist.txt &&
             python {project}/examples/basic.py
         run: python -m cibuildwheel --output-dir wheelhouse
       - name: Build sdist
         run: python -m build --sdist --outdir wheelhouse
       - uses: actions/upload-artifact@v4
         with:
-          name: distributions
+          name: distributions-windows
+          path: wheelhouse/*
+          if-no-files-found: error
+
+  build-linux-wheels:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install build tools
+        run: python -m pip install --upgrade pip cibuildwheel==4.2.0
+      - name: Build Linux wheels
+        env:
+          CIBW_BUILD: cp310-manylinux_x86_64 cp311-manylinux_x86_64 cp312-manylinux_x86_64 cp313-manylinux_x86_64 cp314-manylinux_x86_64
+          CIBW_TEST_REQUIRES: pytest mypy>=1.15,<2
+          CIBW_TEST_COMMAND: >-
+            python -m pytest {project}/tests/python/test_api.py &&
+            python -m mypy --strict {project}/tests/python/typecheck_api.py &&
+            python -m mypy.stubtest topp --allowlist {project}/tests/python/stubtest_allowlist.txt &&
+            python {project}/examples/basic.py
+        run: python -m cibuildwheel --platform linux --output-dir wheelhouse
+      - uses: actions/upload-artifact@v4
+        with:
+          name: distributions-linux
           path: wheelhouse/*
           if-no-files-found: error
 
   publish-testpypi:
-    needs: build-wheels
+    needs: [build-wheels, build-linux-wheels]
     runs-on: ubuntu-latest
     environment: testpypi
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: distributions
+          pattern: distributions-*
           path: dist
+          merge-multiple: true
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
@@ -77,15 +105,34 @@ jobs:
           python -m pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ "topp==$version"
           python examples/basic.py
 
+  verify-testpypi-linux:
+    needs: publish-testpypi
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install from TestPyPI and smoke-test
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          python -m pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ "topp==$version"
+          python examples/basic.py
+
   publish-pypi:
-    needs: verify-testpypi
+    needs: [verify-testpypi, verify-testpypi-linux]
     runs-on: ubuntu-latest
     environment: pypi
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: distributions
+          pattern: distributions-*
           path: dist
+          merge-multiple: true
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           attestations: false
@@ -97,8 +144,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: distributions
+          pattern: distributions-*
           path: dist
+          merge-multiple: true
       - name: Create checksums
         run: cd dist && sha256sum * > SHA256SUMS.txt
       - name: Create stable release
