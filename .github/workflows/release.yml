@@ -32,7 +32,7 @@ jobs:
       - name: Build Windows wheels
         env:
           CIBW_BUILD: cp310-win_amd64 cp311-win_amd64 cp312-win_amd64 cp313-win_amd64 cp314-win_amd64
-          CIBW_TEST_REQUIRES: pytest mypy>=1.15,<2
+          CIBW_BEFORE_TEST: python -m pip install pytest "mypy>=1.15,<2"
           CIBW_TEST_COMMAND: >-
             python -m pytest {project}/tests/python/test_api.py &&
             python -m mypy --strict {project}/tests/python/typecheck_api.py &&
@@ -59,7 +59,7 @@ jobs:
       - name: Build Linux wheels
         env:
           CIBW_BUILD: cp310-manylinux_x86_64 cp311-manylinux_x86_64 cp312-manylinux_x86_64 cp313-manylinux_x86_64 cp314-manylinux_x86_64
-          CIBW_TEST_REQUIRES: pytest mypy>=1.15,<2
+          CIBW_BEFORE_TEST: python -m pip install pytest "mypy>=1.15,<2"
           CIBW_TEST_COMMAND: >-
             python -m pytest {project}/tests/python/test_api.py &&
             python -m mypy --strict {project}/tests/python/typecheck_api.py &&
