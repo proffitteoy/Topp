@@ -18,6 +18,7 @@ guide/prepared-batch
 guide/thresholds
 guide/input-semantics
 guide/threads
+USAGE
 ```
 
 ```{toctree}
