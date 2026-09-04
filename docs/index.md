@@ -10,7 +10,7 @@ getting-started/quickstart
 
 ```{toctree}
 :hidden:
-:caption: 距离计算
+:caption: 使用指南
 
 guide/bottleneck
 guide/wasserstein
@@ -34,10 +34,9 @@ platforms
 :caption: 项目
 
 DEVELOPMENT
-USAGE
-English <https://proffitteoy.github.io/Topp/en/>
 更新日志 <https://github.com/proffitteoy/Topp/blob/main/CHANGELOG.md>
 源代码 <https://github.com/proffitteoy/Topp>
+English <https://proffitteoy.github.io/Topp/en/>
 ```
 
 [![CI](https://github.com/proffitteoy/Topp/actions/workflows/ci.yml/badge.svg)](https://github.com/proffitteoy/Topp/actions/workflows/ci.yml)
@@ -46,28 +45,19 @@ English <https://proffitteoy.github.io/Topp/en/>
 
 [English](https://proffitteoy.github.io/Topp/en/)
 
-Topp 是一个专注于计算 **persistence diagram 精确距离**的 Python 包。它面向已经从 GUDHI、Ripser 或其他流程获得 diagram，并需要在 Python 中进行严格、重复比较的用户。
+Topp 是一个用于计算 persistence diagram 距离的 Python 库。它实现精确 Bottleneck distance、$W_{1,\infty}$ Wasserstein distance 和 $W_{2,2}$ Wasserstein distance，并提供面向重复比较的预处理和批量接口。
 
-Topp 目前提供：
-
-- 点间使用 $L^\infty$ 的精确 Bottleneck 距离；
-- 精确的 $W_{1,\infty}$ 与 $W_{2,2}$ Wasserstein 距离；
-- 不可变的预处理 diagram 和原生 one-to-many 调用；
-- 可复用的输出数组和精确的 Bottleneck 阈值判断。
-
-计算内核使用 C++20 编写，NumPy 是唯一的运行时依赖。
-
-```{important}
-Topp 只比较 persistence diagrams，不构造 filtration，也不计算 persistent homology。它不能替代完整的 TDA 库。
-```
+计算内核使用 C++20 实现，Python 接口以 NumPy 数组作为主要输入形式。Topp 不构造 filtration，也不计算 persistent homology。
 
 ## 安装
 
 ```console
-py -m pip install topp
+pip install topp
 ```
 
-预编译 wheel 支持 Windows x64、Linux x86_64 和 CPython 3.10–3.14。在 macOS 尝试源码构建前，请阅读[平台与支持](platforms.md)。
+PyPI 提供 Windows x64 和 Linux x86_64 的 CPython 3.10–3.14 wheels。macOS 源码构建尚未纳入持续集成测试。
+
+详细说明见[安装](getting-started/installation.md)。
 
 ## 第一次计算
 
@@ -78,25 +68,59 @@ import topp
 x = np.array([[0.0, 1.0], [0.3, 0.8]])
 y = np.array([[0.0, 1.1], [0.4, 0.9]])
 
-print(topp.bottleneck_distance(x, y))
-print(topp.wasserstein_distance(x, y, order=2, internal_p=2))
+bottleneck = topp.bottleneck_distance(x, y)
+w1 = topp.wasserstein_distance(x, y)
+w2 = topp.wasserstein_distance(x, y, order=2, internal_p=2)
 ```
 
-接下来可以阅读[五分钟快速上手](getting-started/quickstart.md)，或从左侧导航选择具体主题。
+每个 persistence diagram 使用 shape 为 `(n, 2)` 的数组表示。完整示例见[五分钟快速上手](getting-started/quickstart.md)。
 
-## Python 批量距离性能
+## 支持的距离
 
-下表是 1 个查询图与 64 个目标图的批量中位耗时，单位为毫秒；每个规模合并 uniform、near-diagonal、clustered、duplicate-heavy 和 separated 五类合成输入的全部计时轮次后取中位数，数值越低越快。
+| 距离 | Python API |
+|---|---|
+| Bottleneck, $L^\infty$ | `topp.bottleneck_distance` |
+| $W_{1,\infty}$ | `topp.wasserstein_distance(..., order=1, internal_p=np.inf)` |
+| $W_{2,2}$ | `topp.wasserstein_distance(..., order=2, internal_p=2)` |
 
-| 距离 | 每图点数 | Topp | GUDHI | Hera | Topp 相对 GUDHI | Topp 相对 Hera |
-|---|---:|---:|---:|---:|---:|---:|
-| Bottleneck | 8 | **1.109** | 11.435 | 17.558 | **10.31×** | **15.83×** |
-| Bottleneck | 32 | **4.458** | 49.380 | 132.501 | **11.08×** | **29.72×** |
-| Bottleneck | 128 | **11.553** | 265.807 | 765.597 | **23.01×** | **66.27×** |
-| Bottleneck | 512 | **53.879** | 1,913.019 | 5,077.575 | **35.51×** | **94.24×** |
-| Wasserstein | 8 | **1.161** | 16.813 | 6.976 | **14.48×** | **6.01×** |
-| Wasserstein | 32 | **3.154** | 22.152 | 66.302 | **7.02×** | **21.02×** |
-| Wasserstein | 128 | **11.987** | 112.666 | 537.364 | **9.40×** | **44.83×** |
-| Wasserstein | 512 | **16.400** | 3,112.252 | 4,159.430 | **189.77×** | **253.62×** |
+上述距离均按 Topp 文档中的数学约定精确计算。其他 Wasserstein 参数组合目前不实现。
 
-测试于 2026-08-17，环境为 Windows 11、Python 3.12.13、单线程，使用从 1.0 内核基线提交 `4cf5b4e` 构建的 MSVC wheel（SHA-256 `562161cdc20dda8ab751f611102dda71e5d9d5585c1feed30e0110db1934939c`）、GUDHI 3.13.0，以及该版本提供的 Hera API。Bottleneck 表比较各库默认调用：Topp 为 exact，GUDHI `e=None` 使用近似策略，Hera 使用 approximate `delta=0.01`。Wasserstein 中 Topp/GUDHI 为 exact $W_{1,\infty}$，Hera 为 approximate $W_{1,\infty}$（`delta=0.01`）；因此 Hera 列表示默认 Python API 速度，不是同精度算法排名。不同分布的耗时差异可能很大，汇总值不表示每类输入都达到相同倍数。
+距离定义和对角线匹配规则见[数学约定](MATHEMATICS.md)。
+
+## 重复比较
+
+`PreparedDiagram` 保存经过验证和预处理的 persistence diagram。一个 diagram 需要与多个目标重复比较时，可以复用该对象：
+
+```python
+query = topp.prepare_diagram(x)
+targets = [y, [[0.0, 2.0]], np.empty((0, 2))]
+
+distances = topp.bottleneck_distances(query, targets)
+```
+
+对应的 Wasserstein 批量接口为 `topp.wasserstein_distances`。只需要判断 Bottleneck distance 是否不超过某个阈值时，可以使用 `topp.bottleneck_within`。
+
+相关说明见[预处理与批量计算](guide/prepared-batch.md)和[阈值判断](guide/thresholds.md)。
+
+## 文档结构
+
+文档按用途分为以下几部分：
+
+- **快速开始**：安装和最小可运行示例；
+- **使用指南**：各距离函数、批量计算、输入语义和线程行为；
+- **参考**：Python API、数学约定和平台支持；
+- **项目**：构建、测试、开发和版本记录。
+
+API 的调用契约见 [Python API](API.md)。输入中的对角点、重复点、essential points 和无穷值处理见[输入语义](guide/input-semantics.md)。
+
+## 性能
+
+Topp 针对 persistence-diagram distance 的重复计算实现了专门的 C++ 内核。仓库中的 benchmark 对 Topp、GUDHI 和 Hera 的 Python 接口进行了固定环境下的比较。
+
+完整结果、数据分布、软件版本、近似参数和测试方法见仓库的 [benchmark documentation](https://github.com/proffitteoy/Topp/tree/main/benchmarks)。不同库的默认算法和精度设置并不完全相同，性能数字应与实验配置一起解释。
+
+## 开发与引用
+
+源码构建、测试和 benchmark 说明见[开发指南](DEVELOPMENT.md)。
+
+研究工作中使用 Topp 时，请引用实际使用的软件版本；机器可读的引用信息位于仓库的 `CITATION.cff`。
